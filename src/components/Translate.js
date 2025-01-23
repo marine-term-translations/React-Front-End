@@ -3,16 +3,17 @@ import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import {
   Container,
-  Table,
+  Row,
+  Col,
+  Card,
   Button,
   Form,
   Spinner,
   Alert,
-  Row,
-  Col,
   Modal,
 } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
+import { FaGithub } from "react-icons/fa";
 
 const Translate = () => {
   const navigate = useNavigate();
@@ -23,7 +24,6 @@ const Translate = () => {
   const [modalShow, setModalShow] = useState(false);
   const [editableTerm, setEditableTerm] = useState({});
   const [translations, setTranslations] = useState([]);
-  const [selectedLanguage, setSelectedLanguage] = useState(null);
 
   useEffect(() => {
     if (!sessionStorage.getItem("github_token")) {
@@ -67,7 +67,6 @@ const Translate = () => {
         const contents = response.data;
         console.log(contents);
 
-        // filter out contents for which the filename does not include "http"
         const filteredContents = contents.filter((file) =>
           file.filename.includes("http")
         );
@@ -87,7 +86,6 @@ const Translate = () => {
         );
         const content = responseConfig.data;
         setConfig(content);
-        setSelectedLanguage(content.target_languages[0]);
         setLoading(false);
         setError(null);
       } catch (error) {
@@ -127,12 +125,14 @@ const Translate = () => {
   }
 
   const transformedData = contents.map((item) => {
+    const uri = item.content.uri;
     const labels = item.content.labels.reduce((acc, label) => {
       acc[label.name] = {
         original: label.original,
         ...label.translations.reduce((transAcc, translation) => {
           Object.keys(translation).forEach((lang) => {
-            transAcc[lang] = translation[lang];
+            transAcc[lang] =
+              translation[lang] === "to be filled in" ? "" : translation[lang];
           });
           return transAcc;
         }, {}),
@@ -140,17 +140,14 @@ const Translate = () => {
       return acc;
     }, {});
 
-    console.log(labels);
-    console.log(item.filename);
-
     return {
       filename: item.filename,
+      uri: uri,
       label: [labels],
     };
   });
 
   const handleEditClick = (filename, labelName, key, term) => {
-    // console.log("click");
     setEditableTerm((prev) => ({
       ...prev,
       [`${filename}-${labelName}-${key}`]: true,
@@ -168,7 +165,7 @@ const Translate = () => {
     }));
   };
 
-  const handleInputChange = (event, filename, labelName, key) => {
+  const handleInputChange = (event, filename, labelName, lang) => {
     const { value } = event.target;
 
     setTranslations((prev) => ({
@@ -177,33 +174,21 @@ const Translate = () => {
         ...(prev[filename] || {}),
         [labelName]: {
           ...(prev[filename]?.[labelName] || {}),
-          [key]: value,
+          [lang]: value,
         },
       },
     }));
   };
 
-  const update = async (filename, all = false) => {
+  const update = async (filename, labelName, lang) => {
     setModalShow(true);
-    if (translations[filename]) {
+    if (translations[filename] && translations[filename][labelName]) {
       try {
-        const translation = Object.entries(translations[filename]).reduce(
-          (acc, [labelKey, translationObj]) => {
-            const translatedValue = translationObj[selectedLanguage];
-            if (
-              translatedValue !==
-                contents
-                  .find((item) => item.filename === filename)
-                  .content.labels.find((label) => label.name === labelKey)
-                  .translations[selectedLanguage] &&
-              !isEmpty(translatedValue)
-            ) {
-              acc[labelKey] = { [selectedLanguage]: translatedValue };
-            }
-            return acc;
+        const translation = {
+          [labelName]: {
+            [lang]: translations[filename][labelName][lang],
           },
-          {}
-        );
+        };
 
         await axios.put(
           `${process.env.REACT_APP_BACK_URL}/api/github/update`,
@@ -220,29 +205,27 @@ const Translate = () => {
           }
         );
 
-        if (!all) {
-          const response = await axios.get(
-            `${process.env.REACT_APP_BACK_URL}/api/github/diff`,
-            {
-              params: {
-                repo: process.env.REACT_APP_REPO,
-                branch: sessionStorage.getItem("branch"),
-              },
-              headers: {
-                Authorization: sessionStorage.getItem("github_token"),
-                "Cache-Control": "no-cache", // Invalidate cache
-                Pragma: "no-cache", // Invalidate cache
-                Expires: "0", // Invalidate cache
-              },
-            }
-          );
+        const response = await axios.get(
+          `${process.env.REACT_APP_BACK_URL}/api/github/diff`,
+          {
+            params: {
+              repo: process.env.REACT_APP_REPO,
+              branch: sessionStorage.getItem("branch"),
+            },
+            headers: {
+              Authorization: sessionStorage.getItem("github_token"),
+              "Cache-Control": "no-cache", // Invalidate cache
+              Pragma: "no-cache", // Invalidate cache
+              Expires: "0", // Invalidate cache
+            },
+          }
+        );
 
-          const filteredContents = response.data.filter((file) =>
-            file.filename.includes("http")
-          );
-          setContents(filteredContents);
-          setModalShow(false);
-        }
+        const filteredContents = response.data.filter((file) =>
+          file.filename.includes("http")
+        );
+        setContents(filteredContents);
+        setModalShow(false);
         setError(null);
       } catch (error) {
         console.error("Error updating file:", error);
@@ -254,10 +237,6 @@ const Translate = () => {
     }
   };
 
-  const handleLanguageChange = (event) => {
-    setSelectedLanguage(event.target.value);
-  };
-
   const updateAll = async () => {
     try {
       const modifiedFiles = transformedData.filter((data) => {
@@ -265,6 +244,8 @@ const Translate = () => {
           isFieldModified(data.filename, labelName)
         );
       });
+
+      console.log(modifiedFiles);
 
       if (modifiedFiles.length > 0) {
         for (const file of modifiedFiles) {
@@ -307,16 +288,18 @@ const Translate = () => {
       let fileHasModifiedFields = false;
 
       Object.entries(data.label[0]).forEach(([labelName, labelData]) => {
-        const currentTranslation =
-          translations[data.filename]?.[labelName]?.[selectedLanguage];
-        if (
-          currentTranslation &&
-          currentTranslation !== labelData[selectedLanguage] &&
-          !isEmpty(currentTranslation)
-        ) {
-          modifiedFields += 1;
-          fileHasModifiedFields = true;
-        }
+        Object.keys(labelData).forEach((lang) => {
+          const currentTranslation =
+            translations[data.filename]?.[labelName]?.[lang];
+          if (
+            currentTranslation &&
+            currentTranslation !== labelData[lang] &&
+            !isEmpty(currentTranslation)
+          ) {
+            modifiedFields += 1;
+            fileHasModifiedFields = true;
+          }
+        });
       });
 
       if (fileHasModifiedFields) {
@@ -329,192 +312,167 @@ const Translate = () => {
 
   const { modifiedFields, modifiedFiles } = calculateModifiedCounts();
 
-  const isFieldModified = (filename, labelName) => {
-    const currentTranslation =
-      translations[filename]?.[labelName]?.[selectedLanguage];
+  const isFieldModified = (filename, labelName, lang) => {
+    const currentTranslation = translations[filename]?.[labelName]?.[lang];
     return (
       currentTranslation &&
       currentTranslation !==
         contents
           .find((item) => item.filename === filename)
           .content.labels.find((label) => label.name === labelName)
-          .translations.find(
-            (trans) => Object.keys(trans)[0] === selectedLanguage
-          )[selectedLanguage] &&
+          .translations.find((trans) => trans[lang])[lang] &&
       !isEmpty(currentTranslation)
     );
   };
 
   return (
     <div>
-      <h1>Translate Files</h1>
       <Container className="mt-4">
-        <Table
-          bordered
-          responsive="lg"
-          className="text-center m-auto"
-          style={{ width: "auto" }}
-        >
-          <thead>
-            <tr>
-              <th>
-                <pre> </pre>
-              </th>
-              <th>Label</th>
-              <th>Original</th>
-              <th>
-                <Form.Group
-                  as={Row}
-                  className="align-items-center"
-                  controlId="languageselect"
-                >
-                  <Form.Label column>Translation Language</Form.Label>
-                  <Col>
-                    <Form.Select
-                      value={selectedLanguage}
-                      onChange={handleLanguageChange}
+        <Row className="mt-4 sticky-top bg-white py-2" style={{ top: "56px" }}>
+          <Col>
+            <Button
+              onClick={() => updateAll()}
+              variant="primary"
+              style={{ width: "100%" }}
+              disabled={modifiedFields === 0}
+            >
+              Save ALL
+              {modifiedFields > 0 &&
+                ` - ${modifiedFields} modified fields in ${modifiedFiles} file(s)`}
+            </Button>
+          </Col>
+        </Row>
+        <br></br>
+        <Row className="g-4">
+          {transformedData.map((data) => {
+            return Object.entries(data.label[0]).map(
+              ([labelName, labelData], index) => {
+                return Object.keys(labelData).map((lang) => {
+                  if (lang === "original") return null;
+                  const fieldStatus = isEmpty(
+                    translations[data.filename]?.[labelName]?.[lang]
+                  )
+                    ? "Empty"
+                    : isFieldModified(data.filename, labelName, lang)
+                    ? "Modified"
+                    : "No Modified";
+
+                  return (
+                    <Col
+                      key={`${data.filename}-${labelName}-${lang}`}
+                      md={6}
+                      className="mb-4"
                     >
-                      {config.target_languages.map((language) => (
-                        <option key={language} value={language}>
-                          {language}
-                        </option>
-                      ))}
-                    </Form.Select>
-                  </Col>
-                </Form.Group>
-              </th>
-              <th>Status</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {transformedData.map((data) => {
-              const totalRows = Object.keys(data.label[0]).length;
-              const fileHasModifiedFields = Object.keys(data.label[0]).some(
-                (labelName) => isFieldModified(data.filename, labelName)
-              );
-
-              return (
-                <>
-                  {Object.entries(data.label[0]).map(
-                    ([labelName, labelData], index) => {
-                      const isFirstRow = index === 0;
-                      const fieldStatus = isEmpty(
-                        translations[data.filename]?.[labelName]?.[
-                          selectedLanguage
-                        ]
-                      )
-                        ? "Empty"
-                        : isFieldModified(data.filename, labelName)
-                        ? "Modified"
-                        : "No Modified";
-
-                      return (
-                        <tr key={`${data.filename}-${labelName}`}>
-                          {isFirstRow && <td rowSpan={totalRows}></td>}
-                          <td>{labelName}</td>
-                          <td
-                            style={{
-                              maxWidth: "30vw",
-                              overflow: "hidden",
-                              textOverflow: "ellipsis",
-                            }}
-                          >
-                            {labelData.original}
-                          </td>
-                          <td>
-                            <Form.Control
-                              as="textarea"
-                              value={
-                                translations[data.filename]?.[labelName]?.[
-                                  selectedLanguage
-                                ] ||
-                                labelData[selectedLanguage] ||
-                                ""
-                              }
-                              onClick={
-                                !editableTerm[
-                                  `${data.filename}-${labelName}-${selectedLanguage}`
-                                ]
-                                  ? () =>
-                                      handleEditClick(
+                      <Card
+                        className={
+                          isFieldModified(data.filename, labelName, lang)
+                            ? "border-warning"
+                            : ""
+                        }
+                      >
+                        <Card.Header>
+                          <div>
+                            <a
+                              href={data.uri}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                            >
+                              <FaGithub />
+                            </a>{" "}
+                            <strong>{lang}: </strong>
+                            {labelName}
+                          </div>
+                        </Card.Header>
+                        <Card.Body>
+                          <Row>
+                            <Col md={10}>
+                              <Card.Text>
+                                <strong>Original:</strong> {labelData.original}
+                              </Card.Text>
+                              <Card.Text>
+                                <Form.Group>
+                                  <Form.Label>
+                                    <strong> Translation ({lang}):</strong>
+                                  </Form.Label>
+                                  <Form.Control
+                                    type="text"
+                                    value={
+                                      translations[data.filename]?.[
+                                        labelName
+                                      ]?.[lang] === "to be filled in" ||
+                                      translations[data.filename]?.[
+                                        labelName
+                                      ]?.[lang] === ""
+                                        ? ""
+                                        : translations[data.filename]?.[
+                                            labelName
+                                          ]?.[lang] ||
+                                          labelData[lang] ||
+                                          ""
+                                    }
+                                    placeholder={
+                                      translations[data.filename]?.[
+                                        labelName
+                                      ]?.[lang] === "to be filled in" ||
+                                      translations[data.filename]?.[
+                                        labelName
+                                      ]?.[lang] === ""
+                                        ? "put your translation here"
+                                        : ""
+                                    }
+                                    onClick={
+                                      !editableTerm[
+                                        `${data.filename}-${labelName}-${lang}`
+                                      ]
+                                        ? () =>
+                                            handleEditClick(
+                                              data.filename,
+                                              labelName,
+                                              lang,
+                                              labelData[lang]
+                                            )
+                                        : undefined
+                                    }
+                                    onChange={(e) =>
+                                      handleInputChange(
+                                        e,
                                         data.filename,
                                         labelName,
-                                        selectedLanguage,
-                                        labelData[selectedLanguage]
+                                        lang
                                       )
-                                  : undefined
-                              }
-                              onChange={(e) =>
-                                handleInputChange(
-                                  e,
-                                  data.filename,
-                                  labelName,
-                                  selectedLanguage
-                                )
-                              }
-                              style={{
-                                minHeight: "50px",
-                                resize: "vertical",
-                                fontSize: "16px",
-                                height: "auto",
-                              }}
-                            />
-                          </td>
-                          <td>
-                            {editableTerm[
-                              `${data.filename}-${labelName}-${selectedLanguage}`
-                            ] ? (
-                              <span>{fieldStatus}</span>
-                            ) : isEmpty(labelData[selectedLanguage]) ? (
-                              <span>Empty</span>
-                            ) : (
-                              <span>No Modified</span>
-                            )}
-                          </td>
-                          {isFirstRow && (
-                            <td
-                              rowSpan={totalRows}
-                              style={{ verticalAlign: "middle" }}
-                            >
+                                    }
+                                  />
+                                </Form.Group>
+                              </Card.Text>
+                            </Col>
+                            <Col md={2} className="d-flex align-items-center">
                               <Button
-                                onClick={() => update(data.filename)}
                                 variant="primary"
-                                disabled={!fileHasModifiedFields}
-                                style={{
-                                  width: "100%",
-                                  height: "auto",
-                                  paddingTop: "25px",
-                                  paddingBottom: "25px",
-                                }}
+                                onClick={() =>
+                                  update(data.filename, labelName, lang)
+                                }
+                                disabled={
+                                  !isFieldModified(
+                                    data.filename,
+                                    labelName,
+                                    lang
+                                  )
+                                }
+                                style={{ marginRight: "10px" }}
                               >
                                 Save
                               </Button>
-                            </td>
-                          )}
-                        </tr>
-                      );
-                    }
-                  )}
-                </>
-              );
-            })}
-            <tr>
-              <td colSpan={6}>
-                <Button
-                  onClick={() => updateAll()}
-                  variant="primary"
-                  style={{ width: "100%" }}
-                  disabled={modifiedFields === 0}
-                >
-                  Save ALL ({selectedLanguage})
-                  {modifiedFields > 0 &&
-                    ` - ${modifiedFields} modified fields in ${modifiedFiles} file(s)`}
-                </Button>
-              </td>
-            </tr>
-          </tbody>
-        </Table>
+                            </Col>
+                          </Row>
+                        </Card.Body>
+                      </Card>
+                    </Col>
+                  );
+                });
+              }
+            );
+          })}
+        </Row>
         <Modal
           show={modalShow}
           size="lg"
