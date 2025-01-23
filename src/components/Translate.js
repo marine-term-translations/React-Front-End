@@ -65,7 +65,13 @@ const Translate = () => {
           }
         );
         const contents = response.data;
-        setContents(contents);
+        console.log(contents);
+
+        // filter out contents for which the filename does not include "http"
+        const filteredContents = contents.filter((file) =>
+          file.filename.includes("http")
+        );
+        setContents(filteredContents);
 
         const responseConfig = await axios.get(
           `${process.env.REACT_APP_BACK_URL}/api/github/content`,
@@ -224,10 +230,17 @@ const Translate = () => {
               },
               headers: {
                 Authorization: sessionStorage.getItem("github_token"),
+                "Cache-Control": "no-cache", // Invalidate cache
+                Pragma: "no-cache", // Invalidate cache
+                Expires: "0", // Invalidate cache
               },
             }
           );
-          setContents(response.data);
+
+          const filteredContents = response.data.filter((file) =>
+            file.filename.includes("http")
+          );
+          setContents(filteredContents);
           setModalShow(false);
         }
         setError(null);
