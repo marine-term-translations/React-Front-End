@@ -19,12 +19,10 @@ const Branches = () => {
   const [branches, setBranches] = useState([]);
   const [emptyField, setEmptyField] = useState({});
   const [emptyFieldFile, setEmptyFieldFile] = useState({});
-  const [totalFileCounts, setTotalFileCounts] = useState({});
   const [totalFieldsCount, setTotalFieldsCount] = useState({});
   const navigate = useNavigate();
 
-  const isEmpty = (str) =>
-    !str || str === "to be filled in" || !/[a-zA-Z0-9]/.test(str);
+  const isEmpty = (str) => !str || str === "to be filled in";
 
   useEffect(() => {
     const fetchBranches = async () => {
@@ -55,10 +53,8 @@ const Branches = () => {
         setLoading(false);
         setError(null);
 
-        const emptyFields = {};
-        const emptyFieldsFile = {};
-        const totalFileCounts = {};
         const totalFieldsCount = {};
+        const translationCounts = {};
         branchesData.forEach(async (branchData) => {
           const branch = branchData.name;
           const response = await axios.get(
@@ -73,46 +69,36 @@ const Branches = () => {
 
           contents = contents.filter((file) => file.filename.includes("http"));
 
-          const translationCounts = {};
-          const fileCounts = {};
-          totalFileCounts[branch] = 0;
           totalFieldsCount[branch] = {};
+          translationCounts[branch] = {};
 
           contents.forEach((file) => {
-            const firstInFile = {};
-            totalFileCounts[branch]++;
-
             file.content.labels.forEach((label) => {
               label.translations.forEach((translation) => {
                 Object.entries(translation).forEach(([lang, value]) => {
-                  if (!translationCounts[lang]) {
-                    translationCounts[lang] = 0;
-                    fileCounts[lang] = 0;
+                  if (!translationCounts[branch][lang]) {
+                    translationCounts[branch][lang] = 0;
+                  }
+                  if (!totalFieldsCount[branch][lang]) {
                     totalFieldsCount[branch][lang] = 0;
                   }
 
                   totalFieldsCount[branch][lang]++;
 
-                  if (isEmpty(value)) {
-                    translationCounts[lang]++;
-                    if (!firstInFile[lang]) {
-                      firstInFile[lang] = true;
-                      fileCounts[lang]++;
-                    }
+                  if (!isEmpty(value)) {
+                    //console.log("filled in:", lang, value, branch);
+                    translationCounts[branch][lang]++;
                   }
                 });
               });
             });
           });
+          console.log(translationCounts);
+          console.log(totalFieldsCount);
 
-          emptyFields[branch] = translationCounts;
-          emptyFieldsFile[branch] = fileCounts;
-
-          setEmptyField((prev) => ({ ...prev, [branch]: translationCounts }));
-          setEmptyFieldFile((prev) => ({ ...prev, [branch]: fileCounts }));
-          setTotalFileCounts((prev) => ({
+          setEmptyField((prev) => ({
             ...prev,
-            [branch]: totalFileCounts[branch],
+            [branch]: translationCounts[branch],
           }));
           setTotalFieldsCount((prev) => ({
             ...prev,
@@ -159,7 +145,6 @@ const Branches = () => {
                 "dd/MM/yyyy HH:mm:ss"
               );
               const emptyFieldCounts = emptyField[branch.name];
-              const emptyFieldFileCounts = emptyFieldFile[branch.name];
               const totalFields = totalFieldsCount[branch.name];
               return (
                 <Col key={branch.name} md={4}>
@@ -184,15 +169,10 @@ const Branches = () => {
                                 <div key={lang}>
                                   <strong>{lang}:</strong>
                                   <ProgressBar
-                                    now={
-                                      ((totalFields[lang] - count) /
-                                        totalFields[lang]) *
-                                      100
-                                    }
+                                    now={count}
                                     max={totalFields[lang]}
-                                    label={`${
-                                      totalFields[lang] - count
-                                    } filled`}
+                                    label={`${count}/${totalFields[lang]} filled`}
+                                    srOnly={false}
                                   />
                                 </div>
                               )
@@ -206,11 +186,6 @@ const Branches = () => {
                           </Card.Text>
                           <Card.Text>
                             <Spinner animation="border" size="sm" />
-                          </Card.Text>
-                          <Card.Text>
-                            {totalFileCounts[branch.name] || (
-                              <Spinner animation="border" size="sm" />
-                            )}
                           </Card.Text>
                         </>
                       )}
