@@ -2,7 +2,15 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { formatInTimeZone } from "date-fns-tz";
-import { Container, Row, Col, Card, Spinner, Alert } from "react-bootstrap";
+import {
+  Container,
+  Row,
+  Col,
+  Card,
+  Spinner,
+  Alert,
+  ProgressBar,
+} from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 const Branches = () => {
@@ -12,6 +20,7 @@ const Branches = () => {
   const [emptyField, setEmptyField] = useState({});
   const [emptyFieldFile, setEmptyFieldFile] = useState({});
   const [totalFileCounts, setTotalFileCounts] = useState({});
+  const [totalFieldsCount, setTotalFieldsCount] = useState({});
   const navigate = useNavigate();
 
   const isEmpty = (str) =>
@@ -49,6 +58,7 @@ const Branches = () => {
         const emptyFields = {};
         const emptyFieldsFile = {};
         const totalFileCounts = {};
+        const totalFieldsCount = {};
         branchesData.forEach(async (branchData) => {
           const branch = branchData.name;
           const response = await axios.get(
@@ -66,6 +76,7 @@ const Branches = () => {
           const translationCounts = {};
           const fileCounts = {};
           totalFileCounts[branch] = 0;
+          totalFieldsCount[branch] = {};
 
           contents.forEach((file) => {
             const firstInFile = {};
@@ -77,7 +88,10 @@ const Branches = () => {
                   if (!translationCounts[lang]) {
                     translationCounts[lang] = 0;
                     fileCounts[lang] = 0;
+                    totalFieldsCount[branch][lang] = 0;
                   }
+
+                  totalFieldsCount[branch][lang]++;
 
                   if (isEmpty(value)) {
                     translationCounts[lang]++;
@@ -99,6 +113,10 @@ const Branches = () => {
           setTotalFileCounts((prev) => ({
             ...prev,
             [branch]: totalFileCounts[branch],
+          }));
+          setTotalFieldsCount((prev) => ({
+            ...prev,
+            [branch]: totalFieldsCount[branch],
           }));
         });
       } catch (error) {
@@ -133,82 +151,75 @@ const Branches = () => {
             <p>{error}</p>
           </Alert>
         ) : (
-          <>
-            <Row className="g-4">
-              {branches.map((branch, index) => {
-                const formattedDate = formatInTimeZone(
-                  branch.lastCommit,
-                  userTimeZone,
-                  "dd/MM/yyyy HH:mm:ss"
-                );
-                const emptyFieldCounts = emptyField[branch.name];
-                const emptyFieldFileCounts = emptyFieldFile[branch.name];
-                return (
-                  <Col key={branch.name} md={4}>
-                    <Card
-                      as="a"
-                      href={`?branch=${branch.name}#/translate`}
-                      style={{ cursor: "pointer" }}
-                    >
-                      <Card.Body>
-                        <Card.Title>{branch.name}</Card.Title>
-                        <Card.Subtitle className="mb-2 text-muted">
-                          {formattedDate}
-                        </Card.Subtitle>
-                        {emptyFieldCounts ? (
-                          <>
-                            <Card.Text>
-                              <strong>Empty Fields:</strong>
-                              <ul className="list-unstyled">
-                                {Object.entries(emptyFieldCounts).map(
-                                  ([lang, count]) => (
-                                    <li key={lang}>
-                                      {lang}: {count} field(s)
-                                    </li>
-                                  )
-                                )}
-                              </ul>
-                            </Card.Text>
-                            <Card.Text>
-                              <strong>Files with Empty Fields:</strong>
-                              <ul className="list-unstyled">
-                                {Object.entries(emptyFieldCounts).map(
-                                  ([lang, count]) => (
-                                    <li key={lang}>
-                                      {lang}: {emptyFieldFileCounts[lang]}{" "}
-                                      file(s)
-                                    </li>
-                                  )
-                                )}
-                              </ul>
-                            </Card.Text>
-                            <Card.Text>
-                              <strong>Total Files:</strong>{" "}
-                              {totalFileCounts[branch.name]}
-                            </Card.Text>
-                          </>
-                        ) : (
-                          <>
-                            <Card.Text>
+          <Row className="g-4">
+            {branches.map((branch, index) => {
+              const formattedDate = formatInTimeZone(
+                branch.lastCommit,
+                userTimeZone,
+                "dd/MM/yyyy HH:mm:ss"
+              );
+              const emptyFieldCounts = emptyField[branch.name];
+              const emptyFieldFileCounts = emptyFieldFile[branch.name];
+              const totalFields = totalFieldsCount[branch.name];
+              return (
+                <Col key={branch.name} md={4}>
+                  <Card
+                    as="a"
+                    href={`?branch=${branch.name}#/translate`}
+                    style={{ cursor: "pointer" }}
+                  >
+                    <Card.Body>
+                      <Card.Title>
+                        <strong>{branch.name}</strong>
+                      </Card.Title>
+                      <Card.Subtitle className="mb-2 text-muted">
+                        {formattedDate}
+                      </Card.Subtitle>
+                      {emptyFieldCounts ? (
+                        <>
+                          <Card.Text>
+                            <strong>Progress:</strong>
+                            {Object.entries(emptyFieldCounts).map(
+                              ([lang, count]) => (
+                                <div key={lang}>
+                                  <strong>{lang}:</strong>
+                                  <ProgressBar
+                                    now={
+                                      ((totalFields[lang] - count) /
+                                        totalFields[lang]) *
+                                      100
+                                    }
+                                    max={totalFields[lang]}
+                                    label={`${
+                                      totalFields[lang] - count
+                                    } filled`}
+                                  />
+                                </div>
+                              )
+                            )}
+                          </Card.Text>
+                        </>
+                      ) : (
+                        <>
+                          <Card.Text>
+                            <Spinner animation="border" size="sm" />
+                          </Card.Text>
+                          <Card.Text>
+                            <Spinner animation="border" size="sm" />
+                          </Card.Text>
+                          <Card.Text>
+                            {totalFileCounts[branch.name] || (
                               <Spinner animation="border" size="sm" />
-                            </Card.Text>
-                            <Card.Text>
-                              <Spinner animation="border" size="sm" />
-                            </Card.Text>
-                            <Card.Text>
-                              {totalFileCounts[branch.name] || (
-                                <Spinner animation="border" size="sm" />
-                              )}
-                            </Card.Text>
-                          </>
-                        )}
-                      </Card.Body>
-                    </Card>
-                  </Col>
-                );
-              })}
-            </Row>
-          </>
+                            )}
+                          </Card.Text>
+                        </>
+                      )}
+                    </Card.Body>
+                  </Card>
+                </Col>
+              );
+            })}
+          </Row>
         )}
       </Container>
     </>
