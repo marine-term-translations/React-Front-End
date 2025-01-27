@@ -123,7 +123,6 @@ const Branches = () => {
 
   return (
     <>
-      <br></br>
       <Container className="d-flex flex-column align-items-center">
         {loading ? (
           <div
