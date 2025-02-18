@@ -26,6 +26,21 @@ const Translate = () => {
   const [translations, setTranslations] = useState([]);
 
   useEffect(() => {
+    const handleBeforeUnload = (event) => {
+      if (calculateModifiedCounts().modifiedFields > 0) {
+        event.preventDefault();
+        event.returnValue = "";
+      }
+    };
+
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+    };
+  }, []);
+
+  useEffect(() => {
     if (!sessionStorage.getItem("github_token")) {
       navigate("/");
     }
