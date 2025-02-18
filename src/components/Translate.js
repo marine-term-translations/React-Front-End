@@ -11,9 +11,13 @@ import {
   Spinner,
   Alert,
   Modal,
+  InputGroup,
+  FormControl,
+  ToggleButton,
+  ToggleButtonGroup,
 } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
-import { FaGithub } from "react-icons/fa";
+import { FaGithub, FaInfoCircle } from "react-icons/fa";
 
 const Translate = () => {
   const navigate = useNavigate();
@@ -24,6 +28,9 @@ const Translate = () => {
   const [modalShow, setModalShow] = useState(false);
   const [editableTerm, setEditableTerm] = useState({});
   const [translations, setTranslations] = useState([]);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [groupByLang, setGroupByLang] = useState(false);
+  const [showUnfilled, setShowUnfilled] = useState(false);
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -362,9 +369,118 @@ const Translate = () => {
     );
   };
 
+  const filteredData = transformedData.filter((data) => {
+    return Object.entries(data.label[0]).some(([labelName, labelData]) => {
+      return Object.keys(labelData).some((lang) => {
+        const value = labelData[lang];
+        return (
+          value.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          labelName.toLowerCase().includes(searchTerm.toLowerCase()) ||
+          data.filename.toLowerCase().includes(searchTerm.toLowerCase())
+        );
+      });
+    });
+  });
+
+  const groupedData = groupByLang
+    ? filteredData.reduce((acc, data) => {
+        Object.entries(data.label[0]).forEach(([labelName, labelData]) => {
+          Object.keys(labelData).forEach((lang) => {
+            if (!acc[lang]) acc[lang] = [];
+            acc[lang].push({
+              ...data,
+              label: [{ [labelName]: { [lang]: labelData[lang] } }],
+            });
+          });
+        });
+        return acc;
+      }, {})
+    : { all: filteredData };
+
+  const displayedData = showUnfilled
+    ? Object.entries(groupedData).reduce((acc, [lang, data]) => {
+        acc[lang] = data.filter((item) =>
+          Object.entries(item.label[0]).some(([labelName, labelData]) =>
+            Object.keys(labelData).some((lang) => isEmpty(labelData[lang]))
+          )
+        );
+        return acc;
+      }, {})
+    : groupedData;
+
+  const totalFields = transformedData.reduce(
+    (acc, data) =>
+      acc +
+      Object.entries(data.label[0]).reduce(
+        (acc, [labelName, labelData]) => acc + Object.keys(labelData).length,
+        0
+      ),
+    0
+  );
+
+  const displayedFields = Object.values(displayedData).reduce(
+    (acc, data) =>
+      acc +
+      data.reduce(
+        (acc, item) =>
+          acc +
+          Object.entries(item.label[0]).reduce(
+            (acc, [labelName, labelData]) =>
+              acc + Object.keys(labelData).length,
+            0
+          ),
+        0
+      ),
+    0
+  );
+
   return (
     <div>
       <Container className="mt-4">
+        <Card className="mb-4">
+          <Card.Body>
+            <Row className="g-2">
+              <Col md={4}>
+                <InputGroup>
+                  <FormControl
+                    placeholder="Search"
+                    value={searchTerm}
+                    onChange={(e) => setSearchTerm(e.target.value)}
+                  />
+                </InputGroup>
+              </Col>
+              <Col md={4}>
+                <ToggleButtonGroup
+                  type="checkbox"
+                  value={groupByLang}
+                  onChange={() => setGroupByLang(!groupByLang)}
+                >
+                  <ToggleButton id="tbg-btn-1" value={1}>
+                    Group by Language
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Col>
+              <Col md={4}>
+                <ToggleButtonGroup
+                  type="checkbox"
+                  value={showUnfilled}
+                  onChange={() => setShowUnfilled(!showUnfilled)}
+                >
+                  <ToggleButton id="tbg-btn-2" value={1}>
+                    Show Unfilled
+                  </ToggleButton>
+                </ToggleButtonGroup>
+              </Col>
+            </Row>
+            <Row className="mt-2">
+              <Col>
+                <Button variant="info">
+                  <FaInfoCircle /> {displayedFields} / {totalFields} fields
+                </Button>
+              </Col>
+            </Row>
+          </Card.Body>
+        </Card>
         <Row className="mt-4 sticky-top bg-white py-2" style={{ top: "56px" }}>
           <Col>
             <Button
@@ -381,134 +497,137 @@ const Translate = () => {
         </Row>
         <br></br>
         <Row className="g-4">
-          {transformedData.map((data) => {
-            return Object.entries(data.label[0]).map(
-              ([labelName, labelData], index) => {
-                return Object.keys(labelData).map((lang) => {
-                  if (lang === "original") return null;
-                  const fieldStatus = isEmpty(
-                    translations[data.filename]?.[labelName]?.[lang]
-                  )
-                    ? "Empty"
-                    : isFieldModified(data.filename, labelName, lang)
-                    ? "Modified"
-                    : "No Modified";
+          {Object.entries(displayedData).map(([lang, data]) =>
+            data.map((item) => {
+              return Object.entries(item.label[0]).map(
+                ([labelName, labelData], index) => {
+                  return Object.keys(labelData).map((lang) => {
+                    if (lang === "original") return null;
+                    const fieldStatus = isEmpty(
+                      translations[item.filename]?.[labelName]?.[lang]
+                    )
+                      ? "Empty"
+                      : isFieldModified(item.filename, labelName, lang)
+                      ? "Modified"
+                      : "No Modified";
 
-                  return (
-                    <Col
-                      key={`${data.filename}-${labelName}-${lang}`}
-                      md={6}
-                      className="mb-4"
-                    >
-                      <Card
-                        className={
-                          isFieldModified(data.filename, labelName, lang)
-                            ? "border-warning"
-                            : ""
-                        }
+                    return (
+                      <Col
+                        key={`${item.filename}-${labelName}-${lang}`}
+                        md={6}
+                        className="mb-4"
                       >
-                        <Card.Header>
-                          <div>
-                            <a
-                              href={data.uri}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              <FaGithub />
-                            </a>{" "}
-                            <strong>{lang}: </strong>
-                            {labelName}
-                          </div>
-                        </Card.Header>
-                        <Card.Body>
-                          <Row>
-                            <Col md={10}>
-                              <Card.Text>
-                                <strong>Original:</strong> {labelData.original}
-                              </Card.Text>
-                              <Card.Text>
-                                <Form.Group>
-                                  <Form.Label>
-                                    <strong> Translation ({lang}):</strong>
-                                  </Form.Label>
-                                  <Form.Control
-                                    type="text"
-                                    value={
-                                      translations[data.filename]?.[
-                                        labelName
-                                      ]?.[lang] === "to be filled in" ||
-                                      translations[data.filename]?.[
-                                        labelName
-                                      ]?.[lang] === ""
-                                        ? ""
-                                        : translations[data.filename]?.[
-                                            labelName
-                                          ]?.[lang] ||
-                                          labelData[lang] ||
-                                          ""
-                                    }
-                                    placeholder={
-                                      translations[data.filename]?.[
-                                        labelName
-                                      ]?.[lang] === "to be filled in" ||
-                                      translations[data.filename]?.[
-                                        labelName
-                                      ]?.[lang] === ""
-                                        ? "put your translation here"
-                                        : ""
-                                    }
-                                    onClick={
-                                      !editableTerm[
-                                        `${data.filename}-${labelName}-${lang}`
-                                      ]
-                                        ? () =>
-                                            handleEditClick(
-                                              data.filename,
-                                              labelName,
-                                              lang,
-                                              labelData[lang]
-                                            )
-                                        : undefined
-                                    }
-                                    onChange={(e) =>
-                                      handleInputChange(
-                                        e,
-                                        data.filename,
-                                        labelName,
-                                        lang
-                                      )
-                                    }
-                                  />
-                                </Form.Group>
-                              </Card.Text>
-                            </Col>
-                            <Col md={2} className="d-flex align-items-center">
-                              <Button
-                                variant="primary"
-                                onClick={() =>
-                                  update(data.filename, labelName, lang)
-                                }
-                                disabled={
-                                  !isFieldModified(
-                                    data.filename,
-                                    labelName,
-                                    lang
-                                  )
-                                }
-                                style={{ marginRight: "10px" }}
+                        <Card
+                          className={
+                            isFieldModified(item.filename, labelName, lang)
+                              ? "border-warning"
+                              : ""
+                          }
+                        >
+                          <Card.Header>
+                            <div>
+                              <a
+                                href={item.uri}
+                                target="_blank"
+                                rel="noopener noreferrer"
                               >
-                                Save
-                              </Button>
-                            </Col>
-                          </Row>
-                        </Card.Body>
-                      </Card>
-                    </Col>
-                  );
-                });
-              }
-            );
-          })}
+                                <FaGithub />
+                              </a>{" "}
+                              <strong>{lang}: </strong>
+                              {labelName}
+                            </div>
+                          </Card.Header>
+                          <Card.Body>
+                            <Row>
+                              <Col md={10}>
+                                <Card.Text>
+                                  <strong>Original:</strong>{" "}
+                                  {labelData.original}
+                                </Card.Text>
+                                <Card.Text>
+                                  <Form.Group>
+                                    <Form.Label>
+                                      <strong> Translation ({lang}):</strong>
+                                    </Form.Label>
+                                    <Form.Control
+                                      type="text"
+                                      value={
+                                        translations[item.filename]?.[
+                                          labelName
+                                        ]?.[lang] === "to be filled in" ||
+                                        translations[item.filename]?.[
+                                          labelName
+                                        ]?.[lang] === ""
+                                          ? ""
+                                          : translations[item.filename]?.[
+                                              labelName
+                                            ]?.[lang] ||
+                                            labelData[lang] ||
+                                            ""
+                                      }
+                                      placeholder={
+                                        translations[item.filename]?.[
+                                          labelName
+                                        ]?.[lang] === "to be filled in" ||
+                                        translations[item.filename]?.[
+                                          labelName
+                                        ]?.[lang] === ""
+                                          ? "put your translation here"
+                                          : ""
+                                      }
+                                      onClick={
+                                        !editableTerm[
+                                          `${item.filename}-${labelName}-${lang}`
+                                        ]
+                                          ? () =>
+                                              handleEditClick(
+                                                item.filename,
+                                                labelName,
+                                                lang,
+                                                labelData[lang]
+                                              )
+                                          : undefined
+                                      }
+                                      onChange={(e) =>
+                                        handleInputChange(
+                                          e,
+                                          item.filename,
+                                          labelName,
+                                          lang
+                                        )
+                                      }
+                                    />
+                                  </Form.Group>
+                                </Card.Text>
+                              </Col>
+                              <Col md={2} className="d-flex align-items-center">
+                                <Button
+                                  variant="primary"
+                                  onClick={() =>
+                                    update(item.filename, labelName, lang)
+                                  }
+                                  disabled={
+                                    !isFieldModified(
+                                      item.filename,
+                                      labelName,
+                                      lang
+                                    )
+                                  }
+                                  style={{ marginRight: "10px" }}
+                                >
+                                  Save
+                                </Button>
+                              </Col>
+                            </Row>
+                          </Card.Body>
+                        </Card>
+                      </Col>
+                    );
+                  });
+                }
+              );
+            })
+          )}
         </Row>
         <Modal
           show={modalShow}
