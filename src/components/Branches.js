@@ -2,23 +2,16 @@ import React, { useEffect, useState } from "react";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import { formatInTimeZone } from "date-fns-tz";
-import {
-  Container,
-  Row,
-  Col,
-  Card,
-  Spinner,
-  Alert,
-  ProgressBar,
-} from "react-bootstrap";
+import { Container, Row, Col, Card, Spinner, Alert } from "react-bootstrap";
+import { Doughnut } from "react-chartjs-2";
 import "bootstrap/dist/css/bootstrap.min.css";
+import Chart from "chart.js/auto";
 
 const Branches = () => {
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
   const [branches, setBranches] = useState([]);
   const [emptyField, setEmptyField] = useState({});
-  const [emptyFieldFile, setEmptyFieldFile] = useState({});
   const [totalFieldsCount, setTotalFieldsCount] = useState({});
   const navigate = useNavigate();
 
@@ -86,15 +79,12 @@ const Branches = () => {
                   totalFieldsCount[branch][lang]++;
 
                   if (!isEmpty(value)) {
-                    //console.log("filled in:", lang, value, branch);
                     translationCounts[branch][lang]++;
                   }
                 });
               });
             });
           });
-          console.log(translationCounts);
-          console.log(totalFieldsCount);
 
           setEmptyField((prev) => ({
             ...prev,
@@ -146,48 +136,70 @@ const Branches = () => {
               const emptyFieldCounts = emptyField[branch.name];
               const totalFields = totalFieldsCount[branch.name];
               return (
-                <Col key={branch.name} md={4}>
+                <Col key={branch.name} xxl={4} xl={4} lg={6} md={6} sm={12}>
                   <Card
                     as="a"
                     href={`?branch=${branch.name}#/translate`}
                     style={{ cursor: "pointer" }}
                   >
                     <Card.Body>
-                      <Card.Title>
-                        <strong>{branch.name}</strong>
-                      </Card.Title>
-                      <Card.Subtitle className="mb-2 text-muted">
-                        {formattedDate}
-                      </Card.Subtitle>
-                      {emptyFieldCounts ? (
-                        <>
-                          <Card.Text>
-                            <strong>Progress:</strong>
-                            {Object.entries(emptyFieldCounts).map(
-                              ([lang, count]) => (
-                                <div key={lang}>
-                                  <strong>{lang}:</strong>
-                                  <ProgressBar
-                                    now={count}
-                                    max={totalFields[lang]}
-                                    label={`${count}/${totalFields[lang]} filled`}
-                                    srOnly={false}
-                                  />
-                                </div>
-                              )
-                            )}
-                          </Card.Text>
-                        </>
-                      ) : (
-                        <>
-                          <Card.Text>
+                      <Row>
+                        <Col md={6}>
+                          <Card.Title>
+                            <strong>{branch.name}</strong>
+                          </Card.Title>
+                          <Card.Subtitle className="mb-2 text-muted">
+                            {formattedDate}
+                          </Card.Subtitle>
+                        </Col>
+                        <Col md={6}>
+                          {emptyFieldCounts ? (
+                            <Doughnut
+                              data={{
+                                labels: Object.keys(emptyFieldCounts).map(
+                                  (lang) =>
+                                    `${lang} (${
+                                      totalFields[lang] - emptyFieldCounts[lang]
+                                    })`
+                                ),
+                                datasets: [
+                                  {
+                                    data: Object.entries(emptyFieldCounts)
+                                      .map(([lang, count]) => [
+                                        totalFields[lang] - count,
+                                        count,
+                                      ])
+                                      .flat(),
+                                    backgroundColor: Object.entries(
+                                      emptyFieldCounts
+                                    )
+                                      .map(([lang, count], index) => [
+                                        `rgba(255, 99, 132, ${
+                                          1 - index * 0.1
+                                        })`,
+                                        `rgba(75, 192, 192, ${
+                                          1 - index * 0.1
+                                        })`,
+                                      ])
+                                      .flat(),
+                                  },
+                                ],
+                              }}
+                              options={{
+                                responsive: true,
+                                maintainAspectRatio: false,
+                                plugins: {
+                                  legend: {
+                                    display: false,
+                                  },
+                                },
+                              }}
+                            />
+                          ) : (
                             <Spinner animation="border" size="sm" />
-                          </Card.Text>
-                          <Card.Text>
-                            <Spinner animation="border" size="sm" />
-                          </Card.Text>
-                        </>
-                      )}
+                          )}
+                        </Col>
+                      </Row>
                     </Card.Body>
                   </Card>
                 </Col>

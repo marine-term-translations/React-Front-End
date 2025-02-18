@@ -65,7 +65,6 @@ const Translate = () => {
           }
         );
         const contents = response.data;
-        console.log(contents);
 
         const filteredContents = contents.filter((file) =>
           file.filename.includes("http")
@@ -167,7 +166,6 @@ const Translate = () => {
 
   const handleInputChange = (event, filename, labelName, lang) => {
     const { value } = event.target;
-
     setTranslations((prev) => ({
       ...prev,
       [filename]: {
@@ -182,74 +180,98 @@ const Translate = () => {
 
   const update = async (filename, labelName, lang) => {
     setModalShow(true);
-    if (translations[filename] && translations[filename][labelName]) {
-      try {
-        const translation = {
-          [labelName]: {
-            [lang]: translations[filename][labelName][lang],
-          },
-        };
+    let translation = {};
 
-        await axios.put(
-          `${process.env.REACT_APP_BACK_URL}/api/github/update`,
-          {
+    if (!lang && !labelName) {
+      const fileTranslations = translations[filename];
+      if (fileTranslations) {
+        labelName = Object.keys(fileTranslations)[0];
+        lang = Object.keys(fileTranslations[labelName])[0];
+      }
+    }
+
+    if (translations[filename] && translations[filename][labelName]) {
+      translation = {
+        [labelName]: {
+          [lang]: translations[filename][labelName][lang],
+        },
+      };
+    } else {
+      alert(`No changes were made for ${filename}`);
+      setError(null);
+      setModalShow(false);
+      return;
+    }
+
+    try {
+      await axios.put(
+        `${process.env.REACT_APP_BACK_URL}/api/github/update`,
+        {
+          repo: process.env.REACT_APP_REPO,
+          translations: translation,
+          filename,
+          branch: sessionStorage.getItem("branch"),
+        },
+        {
+          headers: {
+            Authorization: sessionStorage.getItem("github_token"),
+          },
+        }
+      );
+
+      const response = await axios.get(
+        `${process.env.REACT_APP_BACK_URL}/api/github/diff`,
+        {
+          params: {
             repo: process.env.REACT_APP_REPO,
-            translations: translation,
-            filename,
             branch: sessionStorage.getItem("branch"),
           },
-          {
-            headers: {
-              Authorization: sessionStorage.getItem("github_token"),
-            },
-          }
-        );
+          headers: {
+            Authorization: sessionStorage.getItem("github_token"),
+            "Cache-Control": "no-cache",
+            Pragma: "no-cache",
+            Expires: "0",
+          },
+        }
+      );
 
-        const response = await axios.get(
-          `${process.env.REACT_APP_BACK_URL}/api/github/diff`,
-          {
-            params: {
-              repo: process.env.REACT_APP_REPO,
-              branch: sessionStorage.getItem("branch"),
-            },
-            headers: {
-              Authorization: sessionStorage.getItem("github_token"),
-              "Cache-Control": "no-cache", // Invalidate cache
-              Pragma: "no-cache", // Invalidate cache
-              Expires: "0", // Invalidate cache
-            },
-          }
-        );
-
-        const filteredContents = response.data.filter((file) =>
-          file.filename.includes("http")
-        );
-        setContents(filteredContents);
-        setModalShow(false);
-        setError(null);
-      } catch (error) {
-        console.error("Error updating file:", error);
-        setError("Failed to update the file.");
-      }
-    } else {
-      alert(`You don't make a change for ${filename}`);
+      const filteredContents = response.data.filter((file) =>
+        file.filename.includes("http")
+      );
+      setContents(filteredContents);
       setError(null);
+    } catch (error) {
+      console.error("Error updating file:", error);
+      setError("Failed to update the file.");
+    } finally {
+      setModalShow(false);
     }
   };
 
   const updateAll = async () => {
     try {
       const modifiedFiles = transformedData.filter((data) => {
-        return Object.keys(data.label[0]).some((labelName) =>
-          isFieldModified(data.filename, labelName)
-        );
+        return Object.entries(data.label[0]).some(([labelName, labelData]) => {
+          return Object.keys(labelData).some((lang) => {
+            return isFieldModified(data.filename, labelName, lang);
+          });
+        });
       });
 
-      console.log(modifiedFiles);
+      console.log("modifiedFiles", modifiedFiles);
 
       if (modifiedFiles.length > 0) {
         for (const file of modifiedFiles) {
-          await update(file.filename, true);
+          for (const [labelName, labelData] of Object.entries(file.label[0])) {
+            for (const lang of Object.keys(labelData)) {
+              if (
+                isFieldModified(file.filename, labelName, lang) &&
+                !isEmpty(translations[file.filename]?.[labelName]?.[lang])
+              ) {
+                await update(file.filename, labelName, lang);
+              }
+            }
+          }
         }
         const response = await axios.get(
           `${process.env.REACT_APP_BACK_URL}/api/github/diff`,
