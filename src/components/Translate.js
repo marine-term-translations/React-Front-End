@@ -32,6 +32,8 @@ const Translate = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLangs, setSelectedLangs] = useState([]);
   const [showUnfilled, setShowUnfilled] = useState(false);
+  const [showToast, setShowToast] = useState(false);
+  const [toastMessage, setToastMessage] = useState("");
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -143,43 +145,23 @@ const Translate = () => {
               file.content.labels.forEach((label) => {
                 console.log("Label:", label);
                 if (label.original === afterValue) {
+                  const previousOriginal = label.original;
                   label.original = beforeValue;
                   label.translations.forEach((translation) => {
                     Object.keys(translation).forEach((lang) => {
                       translation[lang] = "to be filled in";
                     });
                   });
+
+                  setToastMessage(
+                    `The label "${label.name}" has been updated.\n` +
+                      `Original value changed from "${previousOriginal}" to "${beforeValue}".\n` +
+                      `The translations have been reset and the updated value will be automatically pushed to the branch.`
+                  );
+                  setShowToast(true);
                 }
               });
             });
-
-            const [showToast, setShowToast] = useState(false); // Add state for toast visibility
-            const [toastMessage, setToastMessage] = useState(""); // Add state for toast message
-
-            // Show toast with the message
-            setToastMessage(
-              "A file has been changed on main. This file will be updated."
-            );
-            setShowToast(true);
-
-            // Add the Toast component to your JSX (e.g., at the end of the return statement)
-            <Toast
-              onClose={() => setShowToast(false)}
-              show={showToast}
-              delay={3000}
-              autohide
-              style={{
-                position: "fixed",
-                bottom: "20px",
-                right: "20px",
-                zIndex: 1050,
-              }}
-            >
-              <Toast.Header>
-                <strong className="me-auto">Info</strong>
-              </Toast.Header>
-              <Toast.Body>{toastMessage}</Toast.Body>
-            </Toast>;
           }
         });
 
@@ -743,6 +725,26 @@ const Translate = () => {
           </Modal.Body>
         </Modal>
       </Container>
+      {showToast && (
+        <Toast
+          onClose={() => setShowToast(false)}
+          show={showToast}
+          delay={30000}
+          autohide
+          bg="Primary"
+          style={{
+            position: "fixed",
+            bottom: "20px",
+            right: "20px",
+            zIndex: 1050,
+          }}
+        >
+          <Toast.Header>
+            <strong className="me-auto">Automatic file update</strong>
+          </Toast.Header>
+          <Toast.Body>{toastMessage}</Toast.Body>
+        </Toast>
+      )}
     </div>
   );
 };
