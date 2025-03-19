@@ -15,6 +15,7 @@ import {
   FormControl,
   ToggleButton,
   ToggleButtonGroup,
+  Toast,
 } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { FaGithub, FaInfoCircle, FaSearch } from "react-icons/fa";
@@ -86,7 +87,103 @@ const Translate = () => {
             },
           }
         );
-        const contents = response.data;
+        let contents = response.data;
+        const responseDiffChanged = await axios.get(
+          `${process.env.REACT_APP_BACK_URL}/api/github/changed`,
+          {
+            params: {
+              repo: process.env.REACT_APP_REPO,
+              branch: sessionStorage.getItem("branch"),
+            },
+            headers: {
+              Authorization: sessionStorage.getItem("github_token"),
+            },
+          }
+        );
+        if (responseDiffChanged.data.compare) {
+          setUpToDate(true);
+          setUpToDateMessage(responseDiffChanged.data.message);
+        }
+        const { diffsData, commentsData } = responseDiffChanged.data;
+
+        console.log("diffsData", diffsData);
+
+        diffsData.forEach((diff) => {
+          const beforeMatches =
+            diff.before.match(/original:\s*(.*?)(?=\s*path:|$)/g) || [];
+          const afterMatches =
+            diff.after.match(/original:\s*(.*?)(?=\s*path:|$)/g) || [];
+
+          const beforeValues = beforeMatches.map((match) =>
+            match.replace(/original:\s*"/, "").replace(/"$/, "")
+          );
+          const afterValues = afterMatches.map((match) =>
+            match.replace(/original:\s*"/, "").replace(/"$/, "")
+          );
+
+          //console.log("Before value:", beforeValues);
+          //console.log("After value:", afterValues);
+          const beforeValue =
+            beforeValues.length > 1
+              ? beforeValues[0].replace(/^original:\s*/, "").trim()
+              : beforeValues[0]?.replace(/^original:\s*/, "").trim() || null;
+          const afterValue =
+            afterValues.length > 1
+              ? afterValues[0].replace(/^original:\s*/, "").trim()
+              : afterValues[0]?.replace(/^original:\s*/, "").trim() || null;
+
+          console.log("Before value:", beforeValue);
+          console.log("After value:", afterValue);
+          const hasChanges = beforeValue !== afterValue;
+
+          console.log("Has changes:", hasChanges);
+
+          if (hasChanges) {
+            contents.forEach((file) => {
+              file.content.labels.forEach((label) => {
+                console.log("Label:", label);
+                if (label.original === afterValue) {
+                  label.original = beforeValue;
+                  label.translations.forEach((translation) => {
+                    Object.keys(translation).forEach((lang) => {
+                      translation[lang] = "to be filled in";
+                    });
+                  });
+                }
+              });
+            });
+
+            const [showToast, setShowToast] = useState(false); // Add state for toast visibility
+            const [toastMessage, setToastMessage] = useState(""); // Add state for toast message
+
+            // Show toast with the message
+            setToastMessage(
+              "A file has been changed on main. This file will be updated."
+            );
+            setShowToast(true);
+
+            // Add the Toast component to your JSX (e.g., at the end of the return statement)
+            <Toast
+              onClose={() => setShowToast(false)}
+              show={showToast}
+              delay={3000}
+              autohide
+              style={{
+                position: "fixed",
+                bottom: "20px",
+                right: "20px",
+                zIndex: 1050,
+              }}
+            >
+              <Toast.Header>
+                <strong className="me-auto">Info</strong>
+              </Toast.Header>
+              <Toast.Body>{toastMessage}</Toast.Body>
+            </Toast>;
+          }
+        });
+
+        console.log("contents", contents);
 
         const filteredContents = contents.filter((file) =>
           file.filename.includes("http")
