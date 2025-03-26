@@ -31,6 +31,11 @@ const Translate = () => {
   const [translations, setTranslations] = useState([]);
   const [searchTerm, setSearchTerm] = useState("");
   const [selectedLangs, setSelectedLangs] = useState([]);
+  const [selectedStatuses, setSelectedStatuses] = useState([
+    "Conflict",
+    "No Modified",
+    "Modified",
+  ]);
   const [showUnfilled, setShowUnfilled] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
@@ -147,8 +152,6 @@ const Translate = () => {
             match.replace(/original:\s*"/, "").replace(/"$/, "")
           );
 
-          //console.log("Before value:", beforeValues);
-          //console.log("After value:", afterValues);
           const beforeValue =
             beforeValues.length > 1
               ? beforeValues[0].replace(/^original:\s*/, "").trim()
@@ -523,34 +526,6 @@ const Translate = () => {
       )
     : filteredData;
 
-  const totalFields = transformedData.reduce(
-    (acc, data) =>
-      acc +
-      Object.entries(data.label[0]).reduce(
-        (acc, [labelName, labelData]) =>
-          acc +
-          Object.keys(labelData).filter(
-            (key) => key !== "status" && key !== "original"
-          ).length,
-        0
-      ),
-    0
-  );
-
-  const displayedFields = displayedData.reduce(
-    (acc, item) =>
-      acc +
-      Object.entries(item.label[0]).reduce(
-        (acc, [labelName, labelData]) =>
-          acc +
-          Object.keys(labelData).filter(
-            (key) => key !== "status" && key !== "original"
-          ).length,
-        0
-      ),
-    0
-  );
-
   const handleLangChange = (lang) => {
     setSelectedLangs((prev) =>
       prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang]
@@ -603,8 +578,61 @@ const Translate = () => {
             <Row className="mt-2">
               <Col>
                 <Button variant="info">
-                  <FaInfoCircle /> {displayedFields} / {totalFields} fields
+                  <FaInfoCircle />{" "}
+                  {
+                    // Calculate displayed fields count based on displayedData
+                    displayedData.reduce(
+                      (acc, item) =>
+                        acc +
+                        Object.entries(item.label[0]).reduce(
+                          (acc, [labelName, labelData]) =>
+                            acc +
+                            Object.keys(labelData).filter(
+                              (key) => key !== "status" && key !== "original"
+                            ).length,
+                          0
+                        ),
+                      0
+                    )
+                  }{" "}
+                  /{" "}
+                  {transformedData.reduce(
+                    (acc, data) =>
+                      acc +
+                      Object.entries(data.label[0]).reduce(
+                        (acc, [labelName, labelData]) =>
+                          acc +
+                          Object.keys(labelData).filter(
+                            (key) => key !== "status" && key !== "original"
+                          ).length,
+                        0
+                      ),
+                    0
+                  )}{" "}
+                  fields
                 </Button>
+              </Col>
+            </Row>
+            <Row className="mt-2">
+              <Col>
+                <Form>
+                  {["Conflict", "No Modified", "Modified"].map((status) => (
+                    <Form.Check
+                      inline
+                      key={status}
+                      type="checkbox"
+                      label={status}
+                      checked={selectedStatuses.includes(status)}
+                      onChange={() =>
+                        setSelectedStatuses((prev) =>
+                          prev.includes(status)
+                            ? prev.filter((s) => s !== status)
+                            : [...prev, status]
+                        )
+                      }
+                    />
+                  ))}
+                </Form>
               </Col>
             </Row>
           </Card.Body>
@@ -624,146 +652,162 @@ const Translate = () => {
           </Col>
         </Row>
         <br></br>
-        <Row className="g-3 align-items-stretch">
-          {displayedData.map((item) => {
-            return Object.entries(item.label[0]).map(
-              ([labelName, labelData], index) => {
-                return Object.keys(labelData).map((lang) => {
-                  if (lang === "original" || lang === "status") return null;
-                  const fieldStatus = isEmpty(
-                    translations[item.filename]?.[labelName]?.[lang]
-                  )
-                    ? "Empty"
-                    : isFieldModified(item.filename, labelName, lang)
-                    ? "Modified"
-                    : "No Modified";
-
-                  return (
-                    <Col key={`${item.filename}-${labelName}-${lang}`} md={6}>
-                      <Card
-                        className={`h-100 ${
-                          isFieldModified(item.filename, labelName, lang)
-                            ? "border-warning"
-                            : ""
-                        }`}
-                      >
-                        <Card.Header
-                          className={
-                            labelData.status === "Conflict"
-                              ? "bg-danger text-white"
-                              : labelData.status === "Modified"
-                              ? "bg-info text-white"
-                              : labelData.status === "No Modified"
-                              ? "bg-warning text-white"
-                              : ""
-                          }
+        {(() => {
+          const cards = [];
+          displayedData.forEach((data) => {
+            Object.entries(data.label[0]).forEach(([labelName, labelData]) => {
+              Object.keys(labelData).forEach((lang) => {
+                if (lang === "original" || lang === "status") return;
+                cards.push({
+                  filename: data.filename,
+                  uri: data.uri,
+                  labelName,
+                  labelData,
+                  lang,
+                  status: labelData.status,
+                });
+              });
+            });
+          });
+          const statusOrder = {
+            Conflict: 0,
+            "No Modified": 1,
+            Modified: 2,
+            Empty: 3,
+          };
+          cards.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+          const filteredCards = cards.filter((card) =>
+            selectedStatuses.includes(card.status)
+          );
+          return (
+            <Row className="g-3 align-items-stretch">
+              {filteredCards.map((card) => (
+                <Col
+                  key={`${card.filename}-${card.labelName}-${card.lang}`}
+                  md={6}
+                >
+                  <Card
+                    className={`h-100 ${
+                      isFieldModified(card.filename, card.labelName, card.lang)
+                        ? "border-warning"
+                        : ""
+                    }`}
+                  >
+                    <Card.Header
+                      className={
+                        card.status === "Conflict"
+                          ? "bg-danger text-white"
+                          : card.status === "No Modified"
+                          ? "bg-info text-white"
+                          : card.status === "Modified"
+                          ? "bg-warning text-white"
+                          : ""
+                      }
+                    >
+                      <div>
+                        <a
+                          href={card.uri}
+                          target="_blank"
+                          rel="noopener noreferrer"
                         >
-                          <div>
-                            <a
-                              href={item.uri}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                            >
-                              <FaGithub />
-                            </a>{" "}
-                            <strong>{lang}: </strong>
-                            {labelName}
-                          </div>
-                        </Card.Header>
-                        <Card.Body>
-                          <Row>
-                            <Col md={10}>
-                              <Card.Text>
-                                <strong>Original:</strong> {labelData.original}
-                              </Card.Text>
-                              <Card.Text>
-                                <Form.Group>
-                                  <Form.Label>
-                                    <strong> Translation ({lang}):</strong>
-                                  </Form.Label>
-                                  <Form.Control
-                                    as="textarea"
-                                    rows={
-                                      labelData.original.length > 50 ? 4 : 2
-                                    }
-                                    style={{ resize: "both" }}
-                                    value={
-                                      translations[item.filename]?.[
-                                        labelName
-                                      ]?.[lang] === "to be filled in" ||
-                                      translations[item.filename]?.[
-                                        labelName
-                                      ]?.[lang] === ""
-                                        ? ""
-                                        : translations[item.filename]?.[
-                                            labelName
-                                          ]?.[lang] ||
-                                          labelData[lang] ||
-                                          ""
-                                    }
-                                    placeholder={
-                                      translations[item.filename]?.[
-                                        labelName
-                                      ]?.[lang] === "to be filled in" ||
-                                      translations[item.filename]?.[
-                                        labelName
-                                      ]?.[lang] === ""
-                                        ? "put your translation here"
-                                        : ""
-                                    }
-                                    onClick={
-                                      !editableTerm[
-                                        `${item.filename}-${labelName}-${lang}`
-                                      ]
-                                        ? () =>
-                                            handleEditClick(
-                                              item.filename,
-                                              labelName,
-                                              lang,
-                                              labelData[lang]
-                                            )
-                                        : undefined
-                                    }
-                                    onChange={(e) =>
-                                      handleInputChange(
-                                        e,
-                                        item.filename,
-                                        labelName,
-                                        lang
-                                      )
-                                    }
-                                  />
-                                </Form.Group>
-                              </Card.Text>
-                            </Col>
-                            <Col md={2} className="d-flex align-items-center">
-                              <Button
-                                variant="primary"
-                                onClick={() =>
-                                  update(item.filename, labelName, lang)
+                          <FaGithub />
+                        </a>{" "}
+                        <strong>{card.lang}: </strong>
+                        {card.labelName}
+                      </div>
+                    </Card.Header>
+                    <Card.Body>
+                      <Row>
+                        <Col md={10}>
+                          <Card.Text>
+                            <strong>Original:</strong> {card.labelData.original}
+                          </Card.Text>
+                          <Card.Text>
+                            <Form.Group>
+                              <Form.Label>
+                                <strong> Translation ({card.lang}):</strong>
+                              </Form.Label>
+                              <Form.Control
+                                as="textarea"
+                                rows={
+                                  card.labelData.original.length > 50 ? 4 : 2
                                 }
-                                disabled={
-                                  !isFieldModified(
-                                    item.filename,
-                                    labelName,
-                                    lang
+                                style={{ resize: "both" }}
+                                value={
+                                  translations[card.filename]?.[
+                                    card.labelName
+                                  ]?.[card.lang] === "to be filled in" ||
+                                  translations[card.filename]?.[
+                                    card.labelName
+                                  ]?.[card.lang] === ""
+                                    ? ""
+                                    : translations[card.filename]?.[
+                                        card.labelName
+                                      ]?.[card.lang] ||
+                                      card.labelData[card.lang] ||
+                                      ""
+                                }
+                                placeholder={
+                                  translations[card.filename]?.[
+                                    card.labelName
+                                  ]?.[card.lang] === "to be filled in" ||
+                                  translations[card.filename]?.[
+                                    card.labelName
+                                  ]?.[card.lang] === ""
+                                    ? "put your translation here"
+                                    : ""
+                                }
+                                onClick={
+                                  !editableTerm[
+                                    `${card.filename}-${card.labelName}-${card.lang}`
+                                  ]
+                                    ? () =>
+                                        handleEditClick(
+                                          card.filename,
+                                          card.labelName,
+                                          card.lang,
+                                          card.labelData[card.lang]
+                                        )
+                                    : undefined
+                                }
+                                onChange={(e) =>
+                                  handleInputChange(
+                                    e,
+                                    card.filename,
+                                    card.labelName,
+                                    card.lang
                                   )
                                 }
-                                style={{ marginRight: "10px" }}
-                              >
-                                Save
-                              </Button>
-                            </Col>
-                          </Row>
-                        </Card.Body>
-                      </Card>
-                    </Col>
-                  );
-                });
-              }
-            );
-          })}
-        </Row>
+                              />
+                            </Form.Group>
+                          </Card.Text>
+                        </Col>
+                        <Col md={2} className="d-flex align-items-center">
+                          <Button
+                            variant="primary"
+                            onClick={() =>
+                              update(card.filename, card.labelName, card.lang)
+                            }
+                            disabled={
+                              !isFieldModified(
+                                card.filename,
+                                card.labelName,
+                                card.lang
+                              )
+                            }
+                            style={{ marginRight: "10px" }}
+                          >
+                            Save
+                          </Button>
+                        </Col>
+                      </Row>
+                    </Card.Body>
+                  </Card>
+                </Col>
+              ))}
+            </Row>
+          );
+        })()}
         <Modal
           show={modalShow}
           size="lg"
