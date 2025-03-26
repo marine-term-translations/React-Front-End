@@ -34,6 +34,30 @@ const Translate = () => {
   const [showUnfilled, setShowUnfilled] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [upToDate, setUpToDate] = useState(false);
+  const [upToDateMessage, setUpToDateMessage] = useState("");
+
+  const sendUpdateRequest = async (beforeValue, afterValue) => {
+    try {
+      await axios.put(
+        `${process.env.REACT_APP_BACK_URL}/api/github/auto-update`,
+        {
+          repo: process.env.REACT_APP_REPO,
+          branch: sessionStorage.getItem("branch"),
+          before: beforeValue,
+          after: afterValue,
+        },
+        {
+          headers: {
+            Authorization: sessionStorage.getItem("github_token"),
+          },
+        }
+      );
+      console.log("Auto-update request sent successfully.");
+    } catch (error) {
+      console.error("Error sending auto-update request:", error);
+    }
+  };
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -145,23 +169,22 @@ const Translate = () => {
               file.content.labels.forEach((label) => {
                 console.log("Label:", label);
                 if (label.original === afterValue) {
-                  const previousOriginal = label.original;
                   label.original = beforeValue;
                   label.translations.forEach((translation) => {
                     Object.keys(translation).forEach((lang) => {
-                      translation[lang] = "to be filled in";
+                      translation[lang] =
+                        "MERGE CONFLICT: " + translation[lang];
                     });
                   });
-
-                  setToastMessage(
-                    `The label "${label.name}" has been updated.\n` +
-                      `Original value changed from "${previousOriginal}" to "${beforeValue}".\n` +
-                      `The translations have been reset and the updated value will be automatically pushed to the branch.`
-                  );
-                  setShowToast(true);
                 }
               });
             });
+
+            setToastMessage(
+              "A file has been changed on main. This file will be updated."
+            );
+            setShowToast(true);
+            sendUpdateRequest(beforeValue, afterValue);
           }
         });
 
@@ -241,9 +264,11 @@ const Translate = () => {
   }
 
   const transformedData = contents.map((item) => {
+    console.log("item", item);
     const uri = item.content.uri;
     const labels = item.content.labels.reduce((acc, label) => {
       acc[label.name] = {
+        status: "No Modified",
         original: label.original,
         ...label.translations.reduce((transAcc, translation) => {
           Object.keys(translation).forEach((lang) => {
@@ -255,6 +280,8 @@ const Translate = () => {
       };
       return acc;
     }, {});
+
+    console.log("labels", labels);
 
     return {
       filename: item.filename,
@@ -488,7 +515,11 @@ const Translate = () => {
     (acc, data) =>
       acc +
       Object.entries(data.label[0]).reduce(
-        (acc, [labelName, labelData]) => acc + Object.keys(labelData).length,
+        (acc, [labelName, labelData]) =>
+          acc +
+          Object.keys(labelData).filter(
+            (key) => key !== "status" && key !== "original"
+          ).length,
         0
       ),
     0
@@ -498,7 +529,11 @@ const Translate = () => {
     (acc, item) =>
       acc +
       Object.entries(item.label[0]).reduce(
-        (acc, [labelName, labelData]) => acc + Object.keys(labelData).length,
+        (acc, [labelName, labelData]) =>
+          acc +
+          Object.keys(labelData).filter(
+            (key) => key !== "status" && key !== "original"
+          ).length,
         0
       ),
     0
@@ -577,12 +612,12 @@ const Translate = () => {
           </Col>
         </Row>
         <br></br>
-        <Row className="g-4">
+        <Row className="g-3 align-items-stretch">
           {displayedData.map((item) => {
             return Object.entries(item.label[0]).map(
               ([labelName, labelData], index) => {
                 return Object.keys(labelData).map((lang) => {
-                  if (lang === "original") return null;
+                  if (lang === "original" || lang === "status") return null;
                   const fieldStatus = isEmpty(
                     translations[item.filename]?.[labelName]?.[lang]
                   )
@@ -592,17 +627,13 @@ const Translate = () => {
                     : "No Modified";
 
                   return (
-                    <Col
-                      key={`${item.filename}-${labelName}-${lang}`}
-                      md={6}
-                      className="mb-4"
-                    >
+                    <Col key={`${item.filename}-${labelName}-${lang}`} md={6}>
                       <Card
-                        className={
+                        className={`h-100 ${
                           isFieldModified(item.filename, labelName, lang)
                             ? "border-warning"
                             : ""
-                        }
+                        }`}
                       >
                         <Card.Header>
                           <div>
@@ -629,7 +660,11 @@ const Translate = () => {
                                     <strong> Translation ({lang}):</strong>
                                   </Form.Label>
                                   <Form.Control
-                                    type="text"
+                                    as="textarea"
+                                    rows={
+                                      labelData.original.length > 50 ? 4 : 2
+                                    }
+                                    style={{ resize: "both" }}
                                     value={
                                       translations[item.filename]?.[
                                         labelName
