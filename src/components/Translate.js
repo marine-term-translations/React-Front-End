@@ -268,7 +268,19 @@ const Translate = () => {
     const uri = item.content.uri;
     const labels = item.content.labels.reduce((acc, label) => {
       acc[label.name] = {
-        status: "No Modified",
+        status: label.translations.some((translation) =>
+          Object.values(translation).some((value) =>
+            value.includes("MERGE CONFLICT")
+          )
+        )
+          ? "Conflict"
+          : label.translations.some((translation) =>
+              Object.values(translation).some(
+                (value) => value !== "" && value !== "to be filled in"
+              )
+            )
+          ? "Modified"
+          : "No Modified",
         original: label.original,
         ...label.translations.reduce((transAcc, translation) => {
           Object.keys(translation).forEach((lang) => {
@@ -635,7 +647,17 @@ const Translate = () => {
                             : ""
                         }`}
                       >
-                        <Card.Header>
+                        <Card.Header
+                          className={
+                            labelData.status === "Conflict"
+                              ? "bg-danger text-white"
+                              : labelData.status === "Modified"
+                              ? "bg-info text-white"
+                              : labelData.status === "No Modified"
+                              ? "bg-warning text-white"
+                              : ""
+                          }
+                        >
                           <div>
                             <a
                               href={item.uri}
