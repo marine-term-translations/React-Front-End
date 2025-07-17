@@ -5,9 +5,11 @@
 const REACT_APP_BACK_URL = process.env.REACT_APP_BACK_URL || "";
 
 /**
+/**
  * Fetches translation suggestions from the API.
  * @param {string} text - The text to get suggestions for.
- * @returns {Promise<Array<string>>} - A promise that resolves to an array of suggestions.
+ * @param {string} targetLang - The target language for the translation.
+ * @returns {Promise<string>} - A promise that resolves to a suggestion string.
  */
 export const fetchSuggestions = async (text, targetLang) => {
   if (!text || !targetLang) {
