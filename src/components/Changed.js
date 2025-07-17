@@ -43,9 +43,19 @@ const Changed = () => {
     );
     const contents = responseDiff.data;
     console.log(contents);
+
+    //filter out files from .github folder
+    const filteredContents = contents.filter(
+      (file) =>
+        !file.filename.startsWith(".github/") &&
+        !file.filename.startsWith("config.yml")
+    );
+
+    console.log("Filtered contents:", filteredContents);
+
     const translationCounts = {};
     const fileCounts = {};
-    contents.forEach((file) => {
+    filteredContents.forEach((file) => {
       const firstInFile = {};
 
       file.content.labels.forEach((label) => {
