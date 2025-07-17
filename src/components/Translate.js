@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { fetchSuggestions } from "../utils/SuggestionService";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import {
@@ -761,13 +762,47 @@ const Translate = () => {
                                   !editableTerm[
                                     `${card.filename}-${card.labelName}-${card.lang}`
                                   ]
-                                    ? () =>
+                                    ? async () => {
                                         handleEditClick(
                                           card.filename,
                                           card.labelName,
                                           card.lang,
                                           card.labelData[card.lang]
-                                        )
+                                        );
+                                        try {
+                                          const suggestion =
+                                            await fetchSuggestions(
+                                              card.labelData.original,
+                                              card.lang
+                                            );
+                                          console.log(
+                                            "Suggestion:",
+                                            suggestion
+                                          );
+                                          setTranslations((prev) => ({
+                                            ...prev,
+                                            [card.filename]: {
+                                              ...(prev[card.filename] || {}),
+                                              [card.labelName]: {
+                                                ...(prev[card.filename]?.[
+                                                  card.labelName
+                                                ] || {}),
+                                                [card.lang]:
+                                                  suggestion ||
+                                                  prev[card.filename]?.[
+                                                    card.labelName
+                                                  ]?.[card.lang] ||
+                                                  "",
+                                              },
+                                            },
+                                          }));
+                                        } catch (error) {
+                                          console.error(
+                                            "Error fetching suggestion:",
+                                            error
+                                          );
+                                        }
+                                      }
                                     : undefined
                                 }
                                 onChange={(e) =>
