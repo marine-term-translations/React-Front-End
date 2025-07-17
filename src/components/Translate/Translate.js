@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { fetchSuggestions } from "../utils/SuggestionService";
+import { fetchSuggestions } from "../../utils/SuggestionService";
 import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import {
