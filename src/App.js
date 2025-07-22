@@ -2,7 +2,7 @@ import React from "react";
 import { Routes, Route, HashRouter } from "react-router-dom";
 import Login from "./components/Login";
 import Callback from "./components/Callback";
-import Translate from "./components/Translate/Translate";
+import Translate from "./pages/Translate";
 import Changed from "./components/Changed";
 import Branches from "./pages/Branches";
 import NavBarTranslate from "./components/NavBar/NavBarTranslate";

@@ -11,10 +11,81 @@ export const fetchBranches = async (token) => {
   return response.data;
 };
 
-export const fetchBranchDiff = async (token, branch) => {
+export const fetchBranchDiff = async (token, branch, extra_headers) => {
   const response = await axios.get(`${API_BASE_URL}/api/github/diff`, {
-    params: { repo: REPO, branch },
-    headers: { Authorization: token },
+    params: { repo: REPO, branch: branch },
+    headers: { Authorization: token, ...extra_headers },
   });
   return response.data;
+};
+
+export const sendUpdateRequest = async (beforeValue, afterValue) => {
+  try {
+    await axios.put(
+      `${process.env.REACT_APP_BACK_URL}/api/github/auto-update`,
+      {
+        repo: process.env.REACT_APP_REPO,
+        branch: sessionStorage.getItem("branch"),
+        before: beforeValue,
+        after: afterValue,
+      },
+      {
+        headers: {
+          Authorization: sessionStorage.getItem("github_token"),
+        },
+      }
+    );
+    console.log("Auto-update request sent successfully.");
+  } catch (error) {
+    console.error("Error sending auto-update request:", error);
+  }
+};
+
+export const fetchDiffChanged = async () => {
+  const response = await axios.get(
+    `${process.env.REACT_APP_BACK_URL}/api/github/changed`,
+    {
+      params: {
+        repo: process.env.REACT_APP_REPO,
+        branch: sessionStorage.getItem("branch"),
+      },
+      headers: {
+        Authorization: sessionStorage.getItem("github_token"),
+      },
+    }
+  );
+  return response;
+};
+
+export const fetchContent = async (path) => {
+  const response = await axios.get(
+    `${process.env.REACT_APP_BACK_URL}/api/github/content`,
+    {
+      params: {
+        repo: process.env.REACT_APP_REPO,
+        path: path,
+      },
+      headers: {
+        Authorization: sessionStorage.getItem("github_token"),
+      },
+    }
+  );
+  return response;
+};
+
+export const sendUpdateFile = async (filename, translation) => {
+  await axios.put(
+    `${process.env.REACT_APP_BACK_URL}/api/github/update`,
+    {
+      repo: process.env.REACT_APP_REPO,
+      translations: translation,
+      filename: filename,
+      branch: sessionStorage.getItem("branch"),
+    },
+    {
+      headers: {
+        Authorization: sessionStorage.getItem("github_token"),
+      },
+    }
+  );
 };
