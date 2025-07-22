@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from "react";
 import { fetchSuggestions } from "../utils/SuggestionService";
-import axios from "axios";
 import { useNavigate } from "react-router-dom";
 import {
   Container,
@@ -20,6 +19,13 @@ import {
 } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
 import { FaGithub, FaInfoCircle, FaSearch } from "react-icons/fa";
+import {
+  sendUpdateRequest,
+  fetchBranchDiff,
+  fetchDiffChanged,
+  fetchContent,
+  sendUpdateFile,
+} from "../utils/apiService";
 
 const Translate = () => {
   const navigate = useNavigate();
@@ -42,28 +48,6 @@ const Translate = () => {
   const [toastMessage, setToastMessage] = useState("");
   const [upToDate, setUpToDate] = useState(false);
   const [upToDateMessage, setUpToDateMessage] = useState("");
-
-  const sendUpdateRequest = async (beforeValue, afterValue) => {
-    try {
-      await axios.put(
-        `${process.env.REACT_APP_BACK_URL}/api/github/auto-update`,
-        {
-          repo: process.env.REACT_APP_REPO,
-          branch: sessionStorage.getItem("branch"),
-          before: beforeValue,
-          after: afterValue,
-        },
-        {
-          headers: {
-            Authorization: sessionStorage.getItem("github_token"),
-          },
-        }
-      );
-      console.log("Auto-update request sent successfully.");
-    } catch (error) {
-      console.error("Error sending auto-update request:", error);
-    }
-  };
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -107,31 +91,13 @@ const Translate = () => {
         window.location.hash;
       window.history.replaceState(null, "", newUrl);
       try {
-        const response = await axios.get(
-          `${process.env.REACT_APP_BACK_URL}/api/github/diff`,
-          {
-            params: {
-              repo: process.env.REACT_APP_REPO,
-              branch: sessionStorage.getItem("branch"),
-            },
-            headers: {
-              Authorization: sessionStorage.getItem("github_token"),
-            },
-          }
+        const response = await fetchBranchDiff(
+          sessionStorage.getItem("github_token"),
+          sessionStorage.getItem("branch")
         );
-        let contents = response.data;
-        const responseDiffChanged = await axios.get(
-          `${process.env.REACT_APP_BACK_URL}/api/github/changed`,
-          {
-            params: {
-              repo: process.env.REACT_APP_REPO,
-              branch: sessionStorage.getItem("branch"),
-            },
-            headers: {
-              Authorization: sessionStorage.getItem("github_token"),
-            },
-          }
-        );
+
+        let contents = response;
+        const responseDiffChanged = await fetchDiffChanged();
         if (responseDiffChanged.data.compare) {
           setUpToDate(true);
           setUpToDateMessage(responseDiffChanged.data.message);
@@ -199,18 +165,7 @@ const Translate = () => {
         );
         setContents(filteredContents);
 
-        const responseConfig = await axios.get(
-          `${process.env.REACT_APP_BACK_URL}/api/github/content`,
-          {
-            params: {
-              repo: process.env.REACT_APP_REPO,
-              path: "config.yml",
-            },
-            headers: {
-              Authorization: sessionStorage.getItem("github_token"),
-            },
-          }
-        );
+        const responseConfig = await fetchContent("config.yml");
         const content = responseConfig.data;
         setConfig(content);
         setLoading(false);
@@ -364,38 +319,18 @@ const Translate = () => {
     }
 
     try {
-      await axios.put(
-        `${process.env.REACT_APP_BACK_URL}/api/github/update`,
+      sendUpdateFile(filename, translation);
+      const response = await fetchBranchDiff(
+        sessionStorage.getItem("github_token"),
+        sessionStorage.getItem("branch"),
         {
-          repo: process.env.REACT_APP_REPO,
-          translations: translation,
-          filename,
-          branch: sessionStorage.getItem("branch"),
-        },
-        {
-          headers: {
-            Authorization: sessionStorage.getItem("github_token"),
-          },
+          "Cache-Control": "no-cache",
+          Pragma: "no-cache",
+          Expires: "0",
         }
       );
 
-      const response = await axios.get(
-        `${process.env.REACT_APP_BACK_URL}/api/github/diff`,
-        {
-          params: {
-            repo: process.env.REACT_APP_REPO,
-            branch: sessionStorage.getItem("branch"),
-          },
-          headers: {
-            Authorization: sessionStorage.getItem("github_token"),
-            "Cache-Control": "no-cache",
-            Pragma: "no-cache",
-            Expires: "0",
-          },
-        }
-      );
-
-      const filteredContents = response.data.filter((file) =>
+      const filteredContents = response.filter((file) =>
         file.filename.includes("http")
       );
       setContents(filteredContents);
@@ -433,19 +368,11 @@ const Translate = () => {
             }
           }
         }
-        const response = await axios.get(
-          `${process.env.REACT_APP_BACK_URL}/api/github/diff`,
-          {
-            params: {
-              repo: process.env.REACT_APP_REPO,
-              branch: sessionStorage.getItem("branch"),
-            },
-            headers: {
-              Authorization: sessionStorage.getItem("github_token"),
-            },
-          }
+        const response = await fetchBranchDiff(
+          sessionStorage.getItem("github_token"),
+          sessionStorage.getItem("branch")
         );
-        setContents(response.data);
+        setContents(response);
         setError(null);
         setModalShow(false);
       } else {
