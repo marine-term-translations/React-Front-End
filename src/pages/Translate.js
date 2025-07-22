@@ -537,19 +537,26 @@ const Translate = () => {
                             }
                             style={{ marginBottom: "8px", width: "33%" }}
                           >
-                            Confirm
+                            {isEditing ? "Save Translation" : "Confirm"}
                           </Button>
                           <Button
                             variant="secondary"
                             onClick={async () => {
-                              handleEditClick(
-                                card.filename,
-                                card.labelName,
-                                card.lang,
-                                card.labelData[card.lang]
-                              );
                               if (!isEditing) {
+                                handleEditClick(
+                                  card.filename,
+                                  card.labelName,
+                                  card.lang,
+                                  card.labelData[card.lang]
+                                );
+                              } else {
+                                // "Make Suggestion" clicked
                                 try {
+                                  setEditableTerm((prev) => ({
+                                    ...prev,
+                                    [`${card.filename}-${card.labelName}-${card.lang}`]:
+                                      "suggestion-in-progress",
+                                  }));
                                   const suggestion = await fetchSuggestions(
                                     card.labelData.original,
                                     card.lang
@@ -571,7 +578,16 @@ const Translate = () => {
                                       },
                                     },
                                   }));
+                                  setEditableTerm((prev) => ({
+                                    ...prev,
+                                    [`${card.filename}-${card.labelName}-${card.lang}`]:
+                                      "suggestion-done",
+                                  }));
                                 } catch (error) {
+                                  setEditableTerm((prev) => ({
+                                    ...prev,
+                                    [`${card.filename}-${card.labelName}-${card.lang}`]: true,
+                                  }));
                                   console.error(
                                     "Error fetching suggestion:",
                                     error
@@ -579,9 +595,17 @@ const Translate = () => {
                                 }
                               }
                             }}
+                            disabled={
+                              isEditing === "suggestion-in-progress" ||
+                              isEditing === "suggestion-done"
+                            }
                             style={{ marginBottom: "8px", width: "33%" }}
                           >
-                            {isEditing ? "Editing" : "Edit"}
+                            {isEditing
+                              ? "Make Suggestion"
+                              : !card.labelData.original
+                              ? "Make Suggestion"
+                              : "Edit"}
                           </Button>
                           <Button
                             variant="danger"
