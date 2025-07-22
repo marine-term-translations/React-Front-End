@@ -396,11 +396,27 @@ const Translate = () => {
             Empty: 3,
           };
           cards.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
-          const filteredCards = cards.filter((card) =>
+          let filteredCards = cards.filter((card) =>
             selectedStatuses.includes(card.status)
           );
 
           // Only show one card at a time
+          // Filter out cards that are already in sessionStorage "passedCards"
+          let passed = [];
+          try {
+            passed = JSON.parse(sessionStorage.getItem("passedCards") || "[]");
+          } catch {
+            passed = [];
+          }
+          console.log("passed", passed);
+          filteredCards = cards
+            .filter((card) => selectedStatuses.includes(card.status))
+            .filter((card) => {
+              const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
+              console.log("key", key);
+              console.log("passed.includes(key)", passed.includes(key));
+              return !passed.includes(key);
+            });
           const card = filteredCards[currentCardIndex];
 
           if (!card) {
@@ -420,9 +436,23 @@ const Translate = () => {
 
           // Helper to go to next card
           const goToNextCard = () => {
+            // Mark as passed in session cookie
+            const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
+            let passed = [];
+            try {
+              passed = JSON.parse(
+                sessionStorage.getItem("passedCards") || "[]"
+              );
+            } catch {
+              passed = [];
+            }
+            if (!passed.includes(key)) {
+              passed.push(key);
+              sessionStorage.setItem("passedCards", JSON.stringify(passed));
+            }
             setEditableTerm((prev) => ({
               ...prev,
-              [`${card.filename}-${card.labelName}-${card.lang}`]: false,
+              [key]: false,
             }));
             setCurrentCardIndex((prev) => prev + 1);
           };
@@ -521,14 +551,19 @@ const Translate = () => {
                           <Button
                             variant="success"
                             onClick={async () => {
-                              await update(
-                                card.filename,
-                                card.labelName,
-                                card.lang
-                              );
-                              goToNextCard();
+                              if (!isEditing) {
+                                goToNextCard();
+                              } else {
+                                await update(
+                                  card.filename,
+                                  card.labelName,
+                                  card.lang
+                                );
+                                goToNextCard();
+                              }
                             }}
                             disabled={
+                              isEditing &&
                               !isFieldModified(
                                 card.filename,
                                 card.labelName,
@@ -614,15 +649,6 @@ const Translate = () => {
                               if (
                                 translationValue !== card.labelData.original
                               ) {
-                                console.log(
-                                  "Using original value for",
-                                  card.filename,
-                                  card.labelName,
-                                  card.lang,
-                                  card.labelData.original,
-                                  translationValue
-                                );
-
                                 setTranslations((prev) => ({
                                   ...prev,
                                   [card.filename]: {
@@ -635,21 +661,12 @@ const Translate = () => {
                                     },
                                   },
                                 }));
-                                /*
-                                await update(
-                                  card.filename,
-                                  card.labelName,
-                                  card.lang
-                                );
-                                */
                               }
+                              // Always set to editing mode after using original value
                               setEditableTerm((prev) => ({
                                 ...prev,
-                                [`${card.filename}-${card.labelName}-${card.lang}`]: false,
+                                [`${card.filename}-${card.labelName}-${card.lang}`]: true,
                               }));
-                              /*
-                              goToNextCard();
-                              */
                             }}
                           >
                             Use Original Value
