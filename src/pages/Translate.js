@@ -610,27 +610,49 @@ const Translate = () => {
                           <Button
                             variant="danger"
                             style={{ marginBottom: "8px", width: "33%" }}
-                            onClick={() => {
-                              setTranslations((prev) => ({
-                                ...prev,
-                                [card.filename]: {
-                                  ...(prev[card.filename] || {}),
-                                  [card.labelName]: {
-                                    ...(prev[card.filename]?.[card.labelName] ||
-                                      {}),
-                                    [card.lang]:
-                                      card.labelData[card.lang] || "",
+                            onClick={async () => {
+                              if (
+                                translationValue !== card.labelData.original
+                              ) {
+                                console.log(
+                                  "Using original value for",
+                                  card.filename,
+                                  card.labelName,
+                                  card.lang,
+                                  card.labelData.original,
+                                  translationValue
+                                );
+
+                                setTranslations((prev) => ({
+                                  ...prev,
+                                  [card.filename]: {
+                                    ...(prev[card.filename] || {}),
+                                    [card.labelName]: {
+                                      ...(prev[card.filename]?.[
+                                        card.labelName
+                                      ] || {}),
+                                      [card.lang]: card.labelData.original,
+                                    },
                                   },
-                                },
-                              }));
+                                }));
+                                /*
+                                await update(
+                                  card.filename,
+                                  card.labelName,
+                                  card.lang
+                                );
+                                */
+                              }
                               setEditableTerm((prev) => ({
                                 ...prev,
                                 [`${card.filename}-${card.labelName}-${card.lang}`]: false,
                               }));
+                              /*
                               goToNextCard();
+                              */
                             }}
                           >
-                            No Translation Needed
+                            Use Original Value
                           </Button>
                         </div>
                       </Col>
