@@ -22,6 +22,11 @@ import {
   sendUpdateFile,
 } from "../utils/apiService";
 
+import {
+  createEmptyStore,
+  getLinkedDataNQuads,
+} from "../utils/linkedDataUtils";
+
 const Translate = () => {
   const navigate = useNavigate();
   const [error, setError] = useState(null);
@@ -118,16 +123,16 @@ const Translate = () => {
               ? afterValues[0].replace(/^original:\s*/, "").trim()
               : afterValues[0]?.replace(/^original:\s*/, "").trim() || null;
 
-          console.log("Before value:", beforeValue);
-          console.log("After value:", afterValue);
+          //console.log("Before value:", beforeValue);
+          //console.log("After value:", afterValue);
           const hasChanges = beforeValue !== afterValue;
 
-          console.log("Has changes:", hasChanges);
+          //console.log("Has changes:", hasChanges);
 
           if (hasChanges) {
             contents.forEach((file) => {
               file.content.labels.forEach((label) => {
-                console.log("Label:", label);
+                //console.log("Label:", label);
                 if (label.original === afterValue) {
                   label.original = beforeValue;
                   label.translations.forEach((translation) => {
@@ -148,7 +153,7 @@ const Translate = () => {
           }
         });
 
-        console.log("contents", contents);
+        //console.log("contents", contents);
 
         const filteredContents = contents.filter((file) =>
           file.filename.includes("http")
@@ -202,7 +207,7 @@ const Translate = () => {
   }
 
   const transformedData = contents.map((item) => {
-    console.log("item", item);
+    //console.log("item", item);
     const uri = item.content.uri;
     const labels = item.content.labels.reduce((acc, label) => {
       acc[label.name] = {
@@ -231,7 +236,7 @@ const Translate = () => {
       return acc;
     }, {});
 
-    console.log("labels", labels);
+    //console.log("labels", labels);
 
     return {
       filename: item.filename,
@@ -413,8 +418,8 @@ const Translate = () => {
             .filter((card) => selectedStatuses.includes(card.status))
             .filter((card) => {
               const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
-              console.log("key", key);
-              console.log("passed.includes(key)", passed.includes(key));
+              //console.log("key", key);
+              //console.log("passed.includes(key)", passed.includes(key));
               return !passed.includes(key);
             });
           const card = filteredCards[currentCardIndex];
@@ -435,7 +440,7 @@ const Translate = () => {
             "";
 
           // Helper to go to next card
-          const goToNextCard = () => {
+          const goToNextCard = async () => {
             // Mark as passed in session cookie
             const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
             let passed = [];
@@ -454,6 +459,9 @@ const Translate = () => {
               ...prev,
               [key]: false,
             }));
+            // make empty store
+            let store = createEmptyStore();
+            await getLinkedDataNQuads(card.uri, store);
             setCurrentCardIndex((prev) => prev + 1);
           };
 
