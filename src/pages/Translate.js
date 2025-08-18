@@ -2,7 +2,6 @@ import React, { useEffect, useState } from "react";
 import { fetchSuggestions } from "../utils/SuggestionService";
 import { useNavigate } from "react-router-dom";
 import {
-  Container,
   Row,
   Col,
   Card,
@@ -11,14 +10,10 @@ import {
   Spinner,
   Alert,
   Modal,
-  InputGroup,
-  FormControl,
-  ToggleButton,
-  ToggleButtonGroup,
   Toast,
 } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
-import { FaGithub, FaInfoCircle, FaSearch } from "react-icons/fa";
+import { FaGithub } from "react-icons/fa";
 import {
   sendUpdateRequest,
   fetchBranchDiff,
@@ -26,6 +21,11 @@ import {
   fetchContent,
   sendUpdateFile,
 } from "../utils/apiService";
+
+import {
+  createEmptyStore,
+  getLinkedDataNQuads,
+} from "../utils/linkedDataUtils";
 
 const Translate = () => {
   const navigate = useNavigate();
@@ -36,14 +36,13 @@ const Translate = () => {
   const [modalShow, setModalShow] = useState(false);
   const [editableTerm, setEditableTerm] = useState({});
   const [translations, setTranslations] = useState([]);
-  const [searchTerm, setSearchTerm] = useState("");
-  const [selectedLangs, setSelectedLangs] = useState([]);
+  const [currentCardIndex, setCurrentCardIndex] = useState(0);
+  const [displayedData, setDisplayedData] = useState([]);
   const [selectedStatuses, setSelectedStatuses] = useState([
     "Conflict",
     "No Modified",
     "Modified",
   ]);
-  const [showUnfilled, setShowUnfilled] = useState(false);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [upToDate, setUpToDate] = useState(false);
@@ -98,10 +97,6 @@ const Translate = () => {
 
         let contents = response;
         const responseDiffChanged = await fetchDiffChanged();
-        if (responseDiffChanged.data.compare) {
-          setUpToDate(true);
-          setUpToDateMessage(responseDiffChanged.data.message);
-        }
         const { diffsData, commentsData } = responseDiffChanged.data;
 
         console.log("diffsData", diffsData);
@@ -128,16 +123,16 @@ const Translate = () => {
               ? afterValues[0].replace(/^original:\s*/, "").trim()
               : afterValues[0]?.replace(/^original:\s*/, "").trim() || null;
 
-          console.log("Before value:", beforeValue);
-          console.log("After value:", afterValue);
+          //console.log("Before value:", beforeValue);
+          //console.log("After value:", afterValue);
           const hasChanges = beforeValue !== afterValue;
 
-          console.log("Has changes:", hasChanges);
+          //console.log("Has changes:", hasChanges);
 
           if (hasChanges) {
             contents.forEach((file) => {
               file.content.labels.forEach((label) => {
-                console.log("Label:", label);
+                //console.log("Label:", label);
                 if (label.original === afterValue) {
                   label.original = beforeValue;
                   label.translations.forEach((translation) => {
@@ -158,7 +153,7 @@ const Translate = () => {
           }
         });
 
-        console.log("contents", contents);
+        //console.log("contents", contents);
 
         const filteredContents = contents.filter((file) =>
           file.filename.includes("http")
@@ -179,21 +174,10 @@ const Translate = () => {
     fetchToken();
   }, [navigate]);
 
+  // Recompute cards when displayedData changes
   useEffect(() => {
-    if (contents) {
-      const allLangs = new Set();
-      contents.forEach((item) => {
-        item.content.labels.forEach((label) => {
-          label.translations.forEach((translation) => {
-            Object.keys(translation).forEach((lang) => {
-              allLangs.add(lang);
-            });
-          });
-        });
-      });
-      setSelectedLangs(Array.from(allLangs));
-    }
-  }, [contents]);
+    setCurrentCardIndex(0);
+  }, [displayedData]);
 
   if (loading) {
     return (
@@ -223,7 +207,7 @@ const Translate = () => {
   }
 
   const transformedData = contents.map((item) => {
-    console.log("item", item);
+    //console.log("item", item);
     const uri = item.content.uri;
     const labels = item.content.labels.reduce((acc, label) => {
       acc[label.name] = {
@@ -252,7 +236,7 @@ const Translate = () => {
       return acc;
     }, {});
 
-    console.log("labels", labels);
+    //console.log("labels", labels);
 
     return {
       filename: item.filename,
@@ -343,48 +327,6 @@ const Translate = () => {
     }
   };
 
-  const updateAll = async () => {
-    try {
-      const modifiedFiles = transformedData.filter((data) => {
-        return Object.entries(data.label[0]).some(([labelName, labelData]) => {
-          return Object.keys(labelData).some((lang) => {
-            return isFieldModified(data.filename, labelName, lang);
-          });
-        });
-      });
-
-      console.log("modifiedFiles", modifiedFiles);
-
-      if (modifiedFiles.length > 0) {
-        for (const file of modifiedFiles) {
-          for (const [labelName, labelData] of Object.entries(file.label[0])) {
-            for (const lang of Object.keys(labelData)) {
-              if (
-                isFieldModified(file.filename, labelName, lang) &&
-                !isEmpty(translations[file.filename]?.[labelName]?.[lang])
-              ) {
-                await update(file.filename, labelName, lang);
-              }
-            }
-          }
-        }
-        const response = await fetchBranchDiff(
-          sessionStorage.getItem("github_token"),
-          sessionStorage.getItem("branch")
-        );
-        setContents(response);
-        setError(null);
-        setModalShow(false);
-      } else {
-        alert("No files have been modified.");
-        setError(null);
-      }
-    } catch (error) {
-      console.error("Error updating files:", error);
-      setError("Failed to update the files.");
-    }
-  };
-
   const isEmpty = (str) => {
     return !str || !/[a-zA-Z0-9]/.test(str);
   };
@@ -419,8 +361,6 @@ const Translate = () => {
     return { modifiedFields, modifiedFiles };
   };
 
-  const { modifiedFields, modifiedFiles } = calculateModifiedCounts();
-
   const isFieldModified = (filename, labelName, lang) => {
     const currentTranslation = translations[filename]?.[labelName]?.[lang];
     return (
@@ -434,155 +374,12 @@ const Translate = () => {
     );
   };
 
-  const filteredData = transformedData.filter((data) => {
-    return Object.entries(data.label[0]).some(([labelName, labelData]) => {
-      return Object.keys(labelData).some((lang) => {
-        const value = labelData[lang];
-        return (
-          selectedLangs.includes(lang) &&
-          labelData.original.toLowerCase().includes(searchTerm.toLowerCase())
-        );
-      });
-    });
-  });
-
-  const displayedData = showUnfilled
-    ? filteredData.filter((item) =>
-        Object.entries(item.label[0]).some(([labelName, labelData]) =>
-          Object.keys(labelData).some((lang) => isEmpty(labelData[lang]))
-        )
-      )
-    : filteredData;
-
-  const handleLangChange = (lang) => {
-    setSelectedLangs((prev) =>
-      prev.includes(lang) ? prev.filter((l) => l !== lang) : [...prev, lang]
-    );
-  };
-
   return (
     <div>
-      <Container className="mt-4">
-        <Card className="mb-4">
-          <Card.Body>
-            <Row className="g-2">
-              <Col md={4}>
-                <InputGroup>
-                  <InputGroup.Text>
-                    <FaSearch />
-                  </InputGroup.Text>
-                  <FormControl
-                    placeholder="Search in original translation"
-                    value={searchTerm}
-                    onChange={(e) => setSearchTerm(e.target.value)}
-                  />
-                </InputGroup>
-              </Col>
-              <Col md={4}>
-                <Form>
-                  {selectedLangs.map((lang) => (
-                    <Form.Check
-                      key={lang}
-                      type="checkbox"
-                      label={lang}
-                      checked={selectedLangs.includes(lang)}
-                      onChange={() => handleLangChange(lang)}
-                    />
-                  ))}
-                </Form>
-              </Col>
-              <Col md={4}>
-                <ToggleButtonGroup
-                  type="checkbox"
-                  value={showUnfilled}
-                  onChange={() => setShowUnfilled(!showUnfilled)}
-                >
-                  <ToggleButton id="tbg-btn-2" value={1}>
-                    Show Unfilled
-                  </ToggleButton>
-                </ToggleButtonGroup>
-              </Col>
-            </Row>
-            <Row className="mt-2">
-              <Col>
-                <Button variant="info">
-                  <FaInfoCircle />{" "}
-                  {
-                    // Calculate displayed fields count based on displayedData
-                    displayedData.reduce(
-                      (acc, item) =>
-                        acc +
-                        Object.entries(item.label[0]).reduce(
-                          (acc, [labelName, labelData]) =>
-                            acc +
-                            Object.keys(labelData).filter(
-                              (key) => key !== "status" && key !== "original"
-                            ).length,
-                          0
-                        ),
-                      0
-                    )
-                  }{" "}
-                  /{" "}
-                  {transformedData.reduce(
-                    (acc, data) =>
-                      acc +
-                      Object.entries(data.label[0]).reduce(
-                        (acc, [labelName, labelData]) =>
-                          acc +
-                          Object.keys(labelData).filter(
-                            (key) => key !== "status" && key !== "original"
-                          ).length,
-                        0
-                      ),
-                    0
-                  )}{" "}
-                  fields
-                </Button>
-              </Col>
-            </Row>
-            <Row className="mt-2">
-              <Col>
-                <Form>
-                  {["Conflict", "No Modified", "Modified"].map((status) => (
-                    <Form.Check
-                      inline
-                      key={status}
-                      type="checkbox"
-                      label={status}
-                      checked={selectedStatuses.includes(status)}
-                      onChange={() =>
-                        setSelectedStatuses((prev) =>
-                          prev.includes(status)
-                            ? prev.filter((s) => s !== status)
-                            : [...prev, status]
-                        )
-                      }
-                    />
-                  ))}
-                </Form>
-              </Col>
-            </Row>
-          </Card.Body>
-        </Card>
-        <Row className="mt-4 sticky-top bg-white py-2" style={{ top: "56px" }}>
-          <Col>
-            <Button
-              onClick={() => updateAll()}
-              variant="primary"
-              style={{ width: "100%" }}
-              disabled={modifiedFields === 0}
-            >
-              Save ALL
-              {modifiedFields > 0 &&
-                ` - ${modifiedFields} modified fields in ${modifiedFiles} file(s)`}
-            </Button>
-          </Col>
-        </Row>
-        <br></br>
+      <div className="mt-4">
         {(() => {
           const cards = [];
-          displayedData.forEach((data) => {
+          transformedData.forEach((data) => {
             Object.entries(data.label[0]).forEach(([labelName, labelData]) => {
               Object.keys(labelData).forEach((lang) => {
                 if (lang === "original" || lang === "status") return;
@@ -604,134 +401,140 @@ const Translate = () => {
             Empty: 3,
           };
           cards.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
-          const filteredCards = cards.filter((card) =>
+          let filteredCards = cards.filter((card) =>
             selectedStatuses.includes(card.status)
           );
+
+          // Only show one card at a time
+          // Filter out cards that are already in sessionStorage "passedCards"
+          let passed = [];
+          try {
+            passed = JSON.parse(sessionStorage.getItem("passedCards") || "[]");
+          } catch {
+            passed = [];
+          }
+          console.log("passed", passed);
+          filteredCards = cards
+            .filter((card) => selectedStatuses.includes(card.status))
+            .filter((card) => {
+              const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
+              //console.log("key", key);
+              //console.log("passed.includes(key)", passed.includes(key));
+              return !passed.includes(key);
+            });
+          const card = filteredCards[currentCardIndex];
+
+          if (!card) {
+            return (
+              <Alert variant="success" className="text-center">
+                All done! No more cards to review.
+              </Alert>
+            );
+          }
+
+          const isEditing =
+            editableTerm[`${card.filename}-${card.labelName}-${card.lang}`];
+          const translationValue =
+            translations[card.filename]?.[card.labelName]?.[card.lang] ??
+            card.labelData[card.lang] ??
+            "";
+
+          // Helper to go to next card
+          const goToNextCard = async () => {
+            // Mark as passed in session cookie
+            const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
+            let passed = [];
+            try {
+              passed = JSON.parse(
+                sessionStorage.getItem("passedCards") || "[]"
+              );
+            } catch {
+              passed = [];
+            }
+            if (!passed.includes(key)) {
+              passed.push(key);
+              sessionStorage.setItem("passedCards", JSON.stringify(passed));
+            }
+            setEditableTerm((prev) => ({
+              ...prev,
+              [key]: false,
+            }));
+            // make empty store
+            let store = createEmptyStore();
+            await getLinkedDataNQuads(card.uri, store);
+            setCurrentCardIndex((prev) => prev + 1);
+          };
+
           return (
             <Row className="g-3 align-items-stretch">
-              {filteredCards.map((card) => (
-                <Col
-                  key={`${card.filename}-${card.labelName}-${card.lang}`}
-                  md={6}
+              <Col key={`${card.filename}-${card.labelName}-${card.lang}`}>
+                <Card
+                  className={`h-100 ${
+                    isFieldModified(card.filename, card.labelName, card.lang)
+                      ? "border-warning"
+                      : ""
+                  }`}
                 >
-                  <Card
-                    className={`h-100 ${
-                      isFieldModified(card.filename, card.labelName, card.lang)
-                        ? "border-warning"
+                  <Card.Header
+                    className={
+                      card.status === "Conflict"
+                        ? "bg-danger text-white"
+                        : card.status === "No Modified"
+                        ? "bg-info text-white"
+                        : card.status === "Modified"
+                        ? "bg-warning text-white"
                         : ""
-                    }`}
+                    }
                   >
-                    <Card.Header
-                      className={
-                        card.status === "Conflict"
-                          ? "bg-danger text-white"
-                          : card.status === "No Modified"
-                          ? "bg-info text-white"
-                          : card.status === "Modified"
-                          ? "bg-warning text-white"
-                          : ""
-                      }
-                    >
-                      <div>
-                        <a
-                          href={card.uri}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <FaGithub />
-                        </a>{" "}
-                        <strong>{card.lang}: </strong>
-                        {card.labelName}
-                      </div>
-                    </Card.Header>
-                    <Card.Body>
-                      <Row>
-                        <Col md={10}>
-                          <Card.Text>
-                            <strong>Original:</strong> {card.labelData.original}
-                          </Card.Text>
-                          <Card.Text>
-                            <Form.Group>
-                              <Form.Label>
-                                <strong> Translation ({card.lang}):</strong>
-                              </Form.Label>
+                    <div>
+                      <a
+                        href={card.uri}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                      >
+                        <FaGithub />
+                      </a>{" "}
+                      <strong>{card.lang}: </strong>
+                      {card.labelName}
+                    </div>
+                  </Card.Header>
+                  <Card.Body>
+                    <Row>
+                      <Col md={12}>
+                        <Card.Text>
+                          <strong>Original:</strong> {card.labelData.original}
+                        </Card.Text>
+                        <Card.Text>
+                          <Form.Group>
+                            <Form.Label>
+                              <strong> Translation ({card.lang}):</strong>
+                            </Form.Label>
+                            {!isEditing ? (
+                              <div
+                                style={{
+                                  minHeight: "2.5em",
+                                  whiteSpace: "pre-wrap",
+                                  border: "1px solid #ced4da",
+                                  borderRadius: "0.375rem",
+                                  padding: "0.375rem 0.75rem",
+                                  background: "#f8f9fa",
+                                }}
+                              >
+                                {translationValue || (
+                                  <span style={{ color: "#aaa" }}>
+                                    put your translation here
+                                  </span>
+                                )}
+                              </div>
+                            ) : (
                               <Form.Control
                                 as="textarea"
                                 rows={
                                   card.labelData.original.length > 50 ? 4 : 2
                                 }
                                 style={{ resize: "both" }}
-                                value={
-                                  translations[card.filename]?.[
-                                    card.labelName
-                                  ]?.[card.lang] === "to be filled in" ||
-                                  translations[card.filename]?.[
-                                    card.labelName
-                                  ]?.[card.lang] === ""
-                                    ? ""
-                                    : translations[card.filename]?.[
-                                        card.labelName
-                                      ]?.[card.lang] ||
-                                      card.labelData[card.lang] ||
-                                      ""
-                                }
-                                placeholder={
-                                  translations[card.filename]?.[
-                                    card.labelName
-                                  ]?.[card.lang] === "to be filled in" ||
-                                  translations[card.filename]?.[
-                                    card.labelName
-                                  ]?.[card.lang] === ""
-                                    ? "put your translation here"
-                                    : ""
-                                }
-                                onClick={
-                                  !editableTerm[
-                                    `${card.filename}-${card.labelName}-${card.lang}`
-                                  ]
-                                    ? async () => {
-                                        handleEditClick(
-                                          card.filename,
-                                          card.labelName,
-                                          card.lang,
-                                          card.labelData[card.lang]
-                                        );
-                                        try {
-                                          const suggestion =
-                                            await fetchSuggestions(
-                                              card.labelData.original,
-                                              card.lang
-                                            );
-                                          console.log(
-                                            "Suggestion:",
-                                            suggestion
-                                          );
-                                          setTranslations((prev) => ({
-                                            ...prev,
-                                            [card.filename]: {
-                                              ...(prev[card.filename] || {}),
-                                              [card.labelName]: {
-                                                ...(prev[card.filename]?.[
-                                                  card.labelName
-                                                ] || {}),
-                                                [card.lang]:
-                                                  suggestion ||
-                                                  prev[card.filename]?.[
-                                                    card.labelName
-                                                  ]?.[card.lang] ||
-                                                  "",
-                                              },
-                                            },
-                                          }));
-                                        } catch (error) {
-                                          console.error(
-                                            "Error fetching suggestion:",
-                                            error
-                                          );
-                                        }
-                                      }
-                                    : undefined
-                                }
+                                value={translationValue}
+                                placeholder="put your translation here"
                                 onChange={(e) =>
                                   handleInputChange(
                                     e,
@@ -741,32 +544,147 @@ const Translate = () => {
                                   )
                                 }
                               />
-                            </Form.Group>
-                          </Card.Text>
-                        </Col>
-                        <Col md={2} className="d-flex align-items-center">
+                            )}
+                          </Form.Group>
+                        </Card.Text>
+                      </Col>
+                      <Col
+                        md={2}
+                        className="d-flex flex-column align-items-center justify-content-center gap-2"
+                      ></Col>
+                    </Row>
+                    <Row className="mb-3">
+                      <Col className="mt-3">
+                        <div className="d-flex justify-content-between gap-2">
                           <Button
-                            variant="primary"
-                            onClick={() =>
-                              update(card.filename, card.labelName, card.lang)
-                            }
+                            variant="success"
+                            onClick={async () => {
+                              if (!isEditing) {
+                                goToNextCard();
+                              } else {
+                                await update(
+                                  card.filename,
+                                  card.labelName,
+                                  card.lang
+                                );
+                                goToNextCard();
+                              }
+                            }}
                             disabled={
+                              isEditing &&
                               !isFieldModified(
                                 card.filename,
                                 card.labelName,
                                 card.lang
                               )
                             }
-                            style={{ marginRight: "10px" }}
+                            style={{ marginBottom: "8px", width: "33%" }}
                           >
-                            Save
+                            {isEditing ? "Save Translation" : "Confirm"}
                           </Button>
-                        </Col>
-                      </Row>
-                    </Card.Body>
-                  </Card>
-                </Col>
-              ))}
+                          <Button
+                            variant="secondary"
+                            onClick={async () => {
+                              if (!isEditing) {
+                                handleEditClick(
+                                  card.filename,
+                                  card.labelName,
+                                  card.lang,
+                                  card.labelData[card.lang]
+                                );
+                              } else {
+                                // "Make Suggestion" clicked
+                                try {
+                                  setEditableTerm((prev) => ({
+                                    ...prev,
+                                    [`${card.filename}-${card.labelName}-${card.lang}`]:
+                                      "suggestion-in-progress",
+                                  }));
+                                  const suggestion = await fetchSuggestions(
+                                    card.labelData.original,
+                                    card.lang
+                                  );
+                                  setTranslations((prev) => ({
+                                    ...prev,
+                                    [card.filename]: {
+                                      ...(prev[card.filename] || {}),
+                                      [card.labelName]: {
+                                        ...(prev[card.filename]?.[
+                                          card.labelName
+                                        ] || {}),
+                                        [card.lang]:
+                                          suggestion ||
+                                          prev[card.filename]?.[
+                                            card.labelName
+                                          ]?.[card.lang] ||
+                                          "",
+                                      },
+                                    },
+                                  }));
+                                  setEditableTerm((prev) => ({
+                                    ...prev,
+                                    [`${card.filename}-${card.labelName}-${card.lang}`]:
+                                      "suggestion-done",
+                                  }));
+                                } catch (error) {
+                                  setEditableTerm((prev) => ({
+                                    ...prev,
+                                    [`${card.filename}-${card.labelName}-${card.lang}`]: true,
+                                  }));
+                                  console.error(
+                                    "Error fetching suggestion:",
+                                    error
+                                  );
+                                }
+                              }
+                            }}
+                            disabled={
+                              isEditing === "suggestion-in-progress" ||
+                              isEditing === "suggestion-done"
+                            }
+                            style={{ marginBottom: "8px", width: "33%" }}
+                          >
+                            {isEditing
+                              ? "Make Suggestion"
+                              : !card.labelData.original
+                              ? "Make Suggestion"
+                              : "Edit"}
+                          </Button>
+                          <Button
+                            variant="danger"
+                            style={{ marginBottom: "8px", width: "33%" }}
+                            onClick={async () => {
+                              if (
+                                translationValue !== card.labelData.original
+                              ) {
+                                setTranslations((prev) => ({
+                                  ...prev,
+                                  [card.filename]: {
+                                    ...(prev[card.filename] || {}),
+                                    [card.labelName]: {
+                                      ...(prev[card.filename]?.[
+                                        card.labelName
+                                      ] || {}),
+                                      [card.lang]: card.labelData.original,
+                                    },
+                                  },
+                                }));
+                              }
+                              // Always set to editing mode after using original value
+                              setEditableTerm((prev) => ({
+                                ...prev,
+                                [`${card.filename}-${card.labelName}-${card.lang}`]: true,
+                              }));
+                            }}
+                          >
+                            Use Original Value
+                          </Button>
+                        </div>
+                      </Col>
+                    </Row>
+                  </Card.Body>
+                </Card>
+              </Col>
             </Row>
           );
         })()}
@@ -787,7 +705,7 @@ const Translate = () => {
             </div>
           </Modal.Body>
         </Modal>
-      </Container>
+      </div>
       {showToast && (
         <Toast
           onClose={() => setShowToast(false)}
