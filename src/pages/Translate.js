@@ -20,6 +20,10 @@ import {
   fetchDiffChanged,
   fetchContent,
   sendUpdateFile,
+  checkReviewerStatus,
+  getFileReviewStatus,
+  submitFileReview,
+  submitPRApproval,
 } from "../utils/apiService";
 
 import {
@@ -30,23 +34,25 @@ import {
 const Translate = () => {
   const navigate = useNavigate();
   const [error, setError] = useState(null);
-  const [config, setConfig] = useState(null);
   const [loading, setLoading] = useState(true);
   const [contents, setContents] = useState(null);
   const [modalShow, setModalShow] = useState(false);
   const [editableTerm, setEditableTerm] = useState({});
   const [translations, setTranslations] = useState([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [displayedData, setDisplayedData] = useState([]);
-  const [selectedStatuses, setSelectedStatuses] = useState([
+  const [selectedStatuses] = useState([
     "Conflict",
     "No Modified",
     "Modified",
   ]);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
-  const [upToDate, setUpToDate] = useState(false);
-  const [upToDateMessage, setUpToDateMessage] = useState("");
+  
+  // Reviewer workflow state
+  const [isReviewer, setIsReviewer] = useState(false);
+  const [reviewMode, setReviewMode] = useState(false); // true when in review mode, false when in edit mode
+  const [fileReviewStatus, setFileReviewStatus] = useState({});
+  const [allFilesCompleted, setAllFilesCompleted] = useState(false);
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -61,6 +67,7 @@ const Translate = () => {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -97,7 +104,7 @@ const Translate = () => {
 
         let contents = response;
         const responseDiffChanged = await fetchDiffChanged();
-        const { diffsData, commentsData } = responseDiffChanged.data;
+        const { diffsData } = responseDiffChanged.data;
 
         console.log("diffsData", diffsData);
 
@@ -160,9 +167,40 @@ const Translate = () => {
         );
         setContents(filteredContents);
 
-        const responseConfig = await fetchContent("config.yml");
-        const content = responseConfig.data;
-        setConfig(content);
+        try {
+          await fetchContent("config.yml");
+          console.log("Config loaded successfully");
+        } catch (error) {
+          console.warn("Config not available:", error);
+        }
+        
+        // Check reviewer status and file review status
+        try {
+          const reviewerStatus = await checkReviewerStatus();
+          setIsReviewer(reviewerStatus.isReviewer);
+          
+          if (reviewerStatus.isReviewer) {
+            const fileStatus = await getFileReviewStatus();
+            setFileReviewStatus(fileStatus.files);
+            
+            // Determine if we should be in review mode
+            // If all files have been edited, switch to review mode
+            const allFilesEdited = Object.values(fileStatus.files).every(
+              (file) => file.edited
+            );
+            setReviewMode(allFilesEdited);
+            
+            // Check if all files are completed (both edited and reviewed)
+            const allCompleted = Object.values(fileStatus.files).every(
+              (file) => file.edited && file.reviewed
+            );
+            setAllFilesCompleted(allCompleted);
+          }
+        } catch (error) {
+          console.warn("Could not fetch reviewer status:", error);
+          // Continue without reviewer functionality if API not available
+        }
+        
         setLoading(false);
         setError(null);
       } catch (error) {
@@ -173,11 +211,6 @@ const Translate = () => {
     };
     fetchToken();
   }, [navigate]);
-
-  // Recompute cards when displayedData changes
-  useEffect(() => {
-    setCurrentCardIndex(0);
-  }, [displayedData]);
 
   if (loading) {
     return (
@@ -327,6 +360,60 @@ const Translate = () => {
     }
   };
 
+  // Reviewer functions
+  const handleFileApproval = async (filename, approved) => {
+    try {
+      await submitFileReview(filename, approved);
+      
+      // Update local review status
+      setFileReviewStatus(prev => ({
+        ...prev,
+        [filename]: {
+          ...prev[filename],
+          reviewed: true,
+          approved: approved
+        }
+      }));
+      
+      // Check if all files are now completed
+      const updatedStatus = {
+        ...fileReviewStatus,
+        [filename]: {
+          ...fileReviewStatus[filename],
+          reviewed: true,
+          approved: approved
+        }
+      };
+      
+      const allCompleted = Object.values(updatedStatus).every(
+        (file) => file.edited && file.reviewed
+      );
+      setAllFilesCompleted(allCompleted);
+      
+      // If all files are completed and approved, submit PR approval
+      if (allCompleted && Object.values(updatedStatus).every(file => file.approved)) {
+        await submitPRApproval();
+        setToastMessage("All files reviewed and PR approved!");
+        setShowToast(true);
+      }
+      
+    } catch (error) {
+      console.error("Error submitting file review:", error);
+      setError("Failed to submit file review.");
+    }
+  };
+
+  const handleSwitchToReviewMode = () => {
+    setReviewMode(true);
+    // Reset current card index to start reviewing from the beginning
+    setCurrentCardIndex(0);
+    // Clear passed cards for review mode
+    const reviewPassedKey = "reviewPassedCards";
+    if (!sessionStorage.getItem(reviewPassedKey)) {
+      sessionStorage.setItem(reviewPassedKey, JSON.stringify([]));
+    }
+  };
+
   const isEmpty = (str) => {
     return !str || !/[a-zA-Z0-9]/.test(str);
   };
@@ -376,6 +463,34 @@ const Translate = () => {
 
   return (
     <div>
+      {/* Reviewer Status Bar */}
+      {isReviewer && (
+        <Alert variant={reviewMode ? "warning" : "info"} className="mb-3">
+          <div className="d-flex justify-content-between align-items-center">
+            <div>
+              <strong>
+                🔍 Reviewer Mode: {reviewMode ? "Reviewing Files" : "Editing Files"}
+              </strong>
+              {reviewMode && (
+                <span className="ms-2">
+                  Review and approve translations before final submission.
+                </span>
+              )}
+            </div>
+            {!reviewMode && isReviewer && (
+              <Button
+                variant="outline-warning"
+                size="sm"
+                onClick={handleSwitchToReviewMode}
+                disabled={!Object.values(fileReviewStatus).every(file => file.edited)}
+              >
+                Switch to Review Mode
+              </Button>
+            )}
+          </div>
+        </Alert>
+      )}
+      
       <div className="mt-4">
         {(() => {
           const cards = [];
@@ -406,25 +521,76 @@ const Translate = () => {
           );
 
           // Only show one card at a time
-          // Filter out cards that are already in sessionStorage "passedCards"
+          // Filter out cards that are already in sessionStorage "passedCards" or "reviewPassedCards"
           let passed = [];
+          const passedKey = reviewMode ? "reviewPassedCards" : "passedCards";
           try {
-            passed = JSON.parse(sessionStorage.getItem("passedCards") || "[]");
+            passed = JSON.parse(sessionStorage.getItem(passedKey) || "[]");
           } catch {
             passed = [];
           }
           console.log("passed", passed);
+          
           filteredCards = cards
             .filter((card) => selectedStatuses.includes(card.status))
             .filter((card) => {
               const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
-              //console.log("key", key);
-              //console.log("passed.includes(key)", passed.includes(key));
+              
+              // In review mode, only show files that have been edited and need review
+              if (reviewMode && isReviewer) {
+                const fileStatus = fileReviewStatus[card.filename];
+                const shouldShowForReview = fileStatus && fileStatus.edited && !fileStatus.reviewed;
+                return shouldShowForReview && !passed.includes(key);
+              }
+              
+              // In edit mode, show files that haven't been passed yet
               return !passed.includes(key);
             });
           const card = filteredCards[currentCardIndex];
 
           if (!card) {
+            // Different completion messages based on mode and status
+            if (allFilesCompleted && isReviewer) {
+              return (
+                <Alert variant="success" className="text-center">
+                  <h4>🎉 All done!</h4>
+                  <p>All files have been edited and reviewed by at least one reviewer.</p>
+                </Alert>
+              );
+            } else if (reviewMode && isReviewer) {
+              return (
+                <Alert variant="info" className="text-center">
+                  <h4>Review Complete!</h4>
+                  <p>You have finished reviewing all available files.</p>
+                  {!allFilesCompleted && (
+                    <Button 
+                      variant="primary" 
+                      onClick={() => {
+                        setReviewMode(false);
+                        setCurrentCardIndex(0);
+                      }}
+                    >
+                      Switch to Edit Mode
+                    </Button>
+                  )}
+                </Alert>
+              );
+            } else if (isReviewer && !reviewMode) {
+              // Check if all files are edited and can switch to review mode
+              const allEdited = Object.values(fileReviewStatus).every(file => file.edited);
+              if (allEdited) {
+                return (
+                  <Alert variant="warning" className="text-center">
+                    <h4>Ready for Review!</h4>
+                    <p>All assigned files have been edited and are ready for review.</p>
+                    <Button variant="success" onClick={handleSwitchToReviewMode}>
+                      Start Review Process
+                    </Button>
+                  </Alert>
+                );
+              }
+            }
+            
             return (
               <Alert variant="success" className="text-center">
                 All done! No more cards to review.
@@ -443,17 +609,18 @@ const Translate = () => {
           const goToNextCard = async () => {
             // Mark as passed in session cookie
             const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
+            const passedKey = reviewMode ? "reviewPassedCards" : "passedCards";
             let passed = [];
             try {
               passed = JSON.parse(
-                sessionStorage.getItem("passedCards") || "[]"
+                sessionStorage.getItem(passedKey) || "[]"
               );
             } catch {
               passed = [];
             }
             if (!passed.includes(key)) {
               passed.push(key);
-              sessionStorage.setItem("passedCards", JSON.stringify(passed));
+              sessionStorage.setItem(passedKey, JSON.stringify(passed));
             }
             setEditableTerm((prev) => ({
               ...prev,
@@ -509,7 +676,7 @@ const Translate = () => {
                             <Form.Label>
                               <strong> Translation ({card.lang}):</strong>
                             </Form.Label>
-                            {!isEditing ? (
+                            {!isEditing || (reviewMode && isReviewer) ? (
                               <div
                                 style={{
                                   minHeight: "2.5em",
@@ -517,12 +684,12 @@ const Translate = () => {
                                   border: "1px solid #ced4da",
                                   borderRadius: "0.375rem",
                                   padding: "0.375rem 0.75rem",
-                                  background: "#f8f9fa",
+                                  background: reviewMode && isReviewer ? "#e9ecef" : "#f8f9fa",
                                 }}
                               >
                                 {translationValue || (
                                   <span style={{ color: "#aaa" }}>
-                                    put your translation here
+                                    {reviewMode && isReviewer ? "Translation for review" : "put your translation here"}
                                   </span>
                                 )}
                               </div>
@@ -555,55 +722,134 @@ const Translate = () => {
                     </Row>
                     <Row className="mb-3">
                       <Col className="mt-3">
-                        <div className="d-flex justify-content-between gap-2">
-                          <Button
-                            variant="success"
-                            onClick={async () => {
-                              if (!isEditing) {
+                        {reviewMode && isReviewer ? (
+                          // Review mode buttons
+                          <div className="d-flex justify-content-between gap-2">
+                            <Button
+                              variant="success"
+                              onClick={async () => {
+                                await handleFileApproval(card.filename, true);
                                 goToNextCard();
-                              } else {
-                                await update(
+                              }}
+                              style={{ marginBottom: "8px", width: "48%" }}
+                            >
+                              ✅ Approve File
+                            </Button>
+                            <Button
+                              variant="danger"
+                              onClick={async () => {
+                                await handleFileApproval(card.filename, false);
+                                goToNextCard();
+                              }}
+                              style={{ marginBottom: "8px", width: "48%" }}
+                            >
+                              ❌ Reject File
+                            </Button>
+                          </div>
+                        ) : (
+                          // Edit mode buttons (original)
+                          <div className="d-flex justify-content-between gap-2">
+                            <Button
+                              variant="success"
+                              onClick={async () => {
+                                if (!isEditing) {
+                                  goToNextCard();
+                                } else {
+                                  await update(
+                                    card.filename,
+                                    card.labelName,
+                                    card.lang
+                                  );
+                                  goToNextCard();
+                                }
+                              }}
+                              disabled={
+                                isEditing &&
+                                !isFieldModified(
                                   card.filename,
                                   card.labelName,
                                   card.lang
-                                );
-                                goToNextCard();
+                                )
                               }
-                            }}
-                            disabled={
-                              isEditing &&
-                              !isFieldModified(
-                                card.filename,
-                                card.labelName,
-                                card.lang
-                              )
-                            }
-                            style={{ marginBottom: "8px", width: "33%" }}
-                          >
-                            {isEditing ? "Save Translation" : "Confirm"}
-                          </Button>
-                          <Button
-                            variant="secondary"
-                            onClick={async () => {
-                              if (!isEditing) {
-                                handleEditClick(
-                                  card.filename,
-                                  card.labelName,
-                                  card.lang,
-                                  card.labelData[card.lang]
-                                );
-                              } else {
-                                // "Make Suggestion" clicked
-                                try {
-                                  setEditableTerm((prev) => ({
-                                    ...prev,
-                                    [`${card.filename}-${card.labelName}-${card.lang}`]:
-                                      "suggestion-in-progress",
-                                  }));
-                                  const suggestion = await fetchSuggestions(
-                                    card.labelData.original,
-                                    card.lang
+                              style={{ marginBottom: "8px", width: "33%" }}
+                            >
+                              {isEditing ? "Save Translation" : "Confirm"}
+                            </Button>
+                            <Button
+                              variant="secondary"
+                              onClick={async () => {
+                                if (!isEditing) {
+                                  handleEditClick(
+                                    card.filename,
+                                    card.labelName,
+                                    card.lang,
+                                    card.labelData[card.lang]
                                   );
+                                } else {
+                                  // "Make Suggestion" clicked
+                                  try {
+                                    setEditableTerm((prev) => ({
+                                      ...prev,
+                                      [`${card.filename}-${card.labelName}-${card.lang}`]:
+                                        "suggestion-in-progress",
+                                    }));
+                                    const suggestion = await fetchSuggestions(
+                                      card.labelData.original,
+                                      card.lang
+                                    );
+                                    setTranslations((prev) => ({
+                                      ...prev,
+                                      [card.filename]: {
+                                        ...(prev[card.filename] || {}),
+                                        [card.labelName]: {
+                                          ...(prev[card.filename]?.[
+                                            card.labelName
+                                          ] || {}),
+                                          [card.lang]:
+                                            suggestion ||
+                                            prev[card.filename]?.[
+                                              card.labelName
+                                            ]?.[card.lang] ||
+                                            "",
+                                        },
+                                      },
+                                    }));
+                                    setEditableTerm((prev) => ({
+                                      ...prev,
+                                      [`${card.filename}-${card.labelName}-${card.lang}`]:
+                                        "suggestion-done",
+                                    }));
+                                  } catch (error) {
+                                    setEditableTerm((prev) => ({
+                                      ...prev,
+                                      [`${card.filename}-${card.labelName}-${card.lang}`]: true,
+                                    }));
+                                    console.error(
+                                      "Error fetching suggestion:",
+                                      error
+                                    );
+                                  }
+                                }
+                              }}
+                              disabled={
+                                isEditing === "suggestion-in-progress" ||
+                                isEditing === "suggestion-done"
+                              }
+                              style={{ marginBottom: "8px", width: "33%" }}
+                            >
+                              {isEditing
+                                ? "Make Suggestion"
+                                : !card.labelData.original
+                                ? "Make Suggestion"
+                                : "Edit"}
+                            </Button>
+                            <Button
+                              variant="danger"
+                              style={{ marginBottom: "8px", width: "33%" }}
+                              onClick={async () => {
+                                if (
+                                  translationValue !== card.labelData.original
+                                ) {
                                   setTranslations((prev) => ({
                                     ...prev,
                                     [card.filename]: {
@@ -612,74 +858,22 @@ const Translate = () => {
                                         ...(prev[card.filename]?.[
                                           card.labelName
                                         ] || {}),
-                                        [card.lang]:
-                                          suggestion ||
-                                          prev[card.filename]?.[
-                                            card.labelName
-                                          ]?.[card.lang] ||
-                                          "",
+                                        [card.lang]: card.labelData.original,
                                       },
                                     },
                                   }));
-                                  setEditableTerm((prev) => ({
-                                    ...prev,
-                                    [`${card.filename}-${card.labelName}-${card.lang}`]:
-                                      "suggestion-done",
-                                  }));
-                                } catch (error) {
-                                  setEditableTerm((prev) => ({
-                                    ...prev,
-                                    [`${card.filename}-${card.labelName}-${card.lang}`]: true,
-                                  }));
-                                  console.error(
-                                    "Error fetching suggestion:",
-                                    error
-                                  );
                                 }
-                              }
-                            }}
-                            disabled={
-                              isEditing === "suggestion-in-progress" ||
-                              isEditing === "suggestion-done"
-                            }
-                            style={{ marginBottom: "8px", width: "33%" }}
-                          >
-                            {isEditing
-                              ? "Make Suggestion"
-                              : !card.labelData.original
-                              ? "Make Suggestion"
-                              : "Edit"}
-                          </Button>
-                          <Button
-                            variant="danger"
-                            style={{ marginBottom: "8px", width: "33%" }}
-                            onClick={async () => {
-                              if (
-                                translationValue !== card.labelData.original
-                              ) {
-                                setTranslations((prev) => ({
+                                // Always set to editing mode after using original value
+                                setEditableTerm((prev) => ({
                                   ...prev,
-                                  [card.filename]: {
-                                    ...(prev[card.filename] || {}),
-                                    [card.labelName]: {
-                                      ...(prev[card.filename]?.[
-                                        card.labelName
-                                      ] || {}),
-                                      [card.lang]: card.labelData.original,
-                                    },
-                                  },
+                                  [`${card.filename}-${card.labelName}-${card.lang}`]: true,
                                 }));
-                              }
-                              // Always set to editing mode after using original value
-                              setEditableTerm((prev) => ({
-                                ...prev,
-                                [`${card.filename}-${card.labelName}-${card.lang}`]: true,
-                              }));
-                            }}
-                          >
-                            Use Original Value
-                          </Button>
-                        </div>
+                              }}
+                            >
+                              Use Original Value
+                            </Button>
+                          </div>
+                        )}
                       </Col>
                     </Row>
                   </Card.Body>
