@@ -20,6 +20,8 @@ import {
   fetchDiffChanged,
   fetchContent,
   sendUpdateFile,
+  checkFileApprovalStatus,
+  approveFile,
 } from "../utils/apiService";
 
 import {
@@ -43,6 +45,9 @@ const Translate = () => {
   ]);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
+  const [prNumber, setPrNumber] = useState(null);
+  const [fileApprovalStatus, setFileApprovalStatus] = useState({});
+  const [reviewerMode, setReviewerMode] = useState(false);
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -94,9 +99,15 @@ const Translate = () => {
 
         let contents = response;
         const responseDiffChanged = await fetchDiffChanged();
-        const { diffsData } = responseDiffChanged.data;
+        const { diffsData, pullNumber } = responseDiffChanged.data;
 
         console.log("diffsData", diffsData);
+        console.log("pullNumber", pullNumber);
+
+        // Store PR number for reviewer functionality
+        if (pullNumber) {
+          setPrNumber(pullNumber);
+        }
 
         diffsData.forEach((diff) => {
           const beforeMatches =
@@ -156,6 +167,30 @@ const Translate = () => {
           file.filename.includes("http")
         );
         setContents(filteredContents);
+
+        // Check file approval status if we have a PR number
+        if (pullNumber) {
+          const approvalStatusPromises = filteredContents.map(async (file) => {
+            try {
+              const approvalStatus = await checkFileApprovalStatus(pullNumber, file.filename);
+              return { filename: file.filename, ...approvalStatus };
+            } catch (error) {
+              console.warn(`Could not check approval status for ${file.filename}:`, error);
+              return { filename: file.filename, approved: false };
+            }
+          });
+
+          try {
+            const approvalStatuses = await Promise.all(approvalStatusPromises);
+            const statusMap = {};
+            approvalStatuses.forEach(status => {
+              statusMap[status.filename] = status;
+            });
+            setFileApprovalStatus(statusMap);
+          } catch (error) {
+            console.warn("Error checking file approval statuses:", error);
+          }
+        }
 
         try {
           await fetchContent("config.yml");
@@ -325,6 +360,40 @@ const Translate = () => {
 
 
 
+  const handleFileApproval = async (filename) => {
+    if (!prNumber) {
+      alert("No PR found for approval");
+      return;
+    }
+
+    try {
+      // Get the SHA from the diff data
+      const responseDiffChanged = await fetchDiffChanged();
+      const { diffsData } = responseDiffChanged.data;
+      const fileData = diffsData.find(diff => diff.filename === filename);
+      
+      if (!fileData || !fileData.filesha) {
+        alert("Could not find file data for approval");
+        return;
+      }
+
+      await approveFile(prNumber, filename, fileData.filesha);
+      
+      // Update approval status
+      const updatedStatus = await checkFileApprovalStatus(prNumber, filename);
+      setFileApprovalStatus(prev => ({
+        ...prev,
+        [filename]: updatedStatus
+      }));
+
+      setToastMessage(`File ${filename} has been approved!`);
+      setShowToast(true);
+    } catch (error) {
+      console.error("Error approving file:", error);
+      setError("Failed to approve file.");
+    }
+  };
+
   const isEmpty = (str) => {
     return !str || !/[a-zA-Z0-9]/.test(str);
   };
@@ -374,6 +443,62 @@ const Translate = () => {
 
   return (
     <div>
+      {/* Reviewer Status Bar */}
+      {prNumber && (
+        <div className="mb-4">
+          <Card>
+            <Card.Header className="bg-primary text-white">
+              <div className="d-flex justify-content-between align-items-center">
+                <div>
+                  <strong>Reviewer Mode</strong> - PR #{prNumber}
+                </div>
+                <div>
+                  <Button
+                    variant={reviewerMode ? "warning" : "light"}
+                    size="sm"
+                    onClick={() => setReviewerMode(!reviewerMode)}
+                  >
+                    {reviewerMode ? "Exit Reviewer Mode" : "Enter Reviewer Mode"}
+                  </Button>
+                </div>
+              </div>
+            </Card.Header>
+            {reviewerMode && (
+              <Card.Body>
+                <div className="d-flex justify-content-between align-items-center">
+                  <div>
+                    <strong>File Review Status:</strong>
+                    {contents && Object.keys(fileApprovalStatus).length > 0 ? (
+                      <div className="mt-2">
+                        {contents.map(file => {
+                          const status = fileApprovalStatus[file.filename];
+                          return (
+                            <div key={file.filename} className="d-flex align-items-center mb-1">
+                              <span className={`badge ${status?.approved ? 'bg-success' : 'bg-warning'} me-2`}>
+                                {status?.approved ? '✓' : '○'}
+                              </span>
+                              <span className="text-truncate me-2" style={{ maxWidth: "400px" }}>
+                                {file.filename}
+                              </span>
+                              {status?.approved && (
+                                <small className="text-muted">
+                                  (Approved by {status.reviewer} on {new Date(status.timestamp).toLocaleDateString()})
+                                </small>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    ) : (
+                      <span className="text-muted ms-2">Loading file status...</span>
+                    )}
+                  </div>
+                </div>
+              </Card.Body>
+            )}
+          </Card>
+        </div>
+      )}
       <div className="mt-4">
         {(() => {
           const cards = [];
@@ -420,12 +545,26 @@ const Translate = () => {
               return !passed.includes(key);
             });
           const card = filteredCards[currentCardIndex];
+          const fileApprovalInfo = fileApprovalStatus[card?.filename];
 
           if (!card) {
+            // Check if all files have been reviewed when there are no more cards
+            const allFilesApproved = contents && contents.length > 0 && 
+              contents.every(file => fileApprovalStatus[file.filename]?.approved);
+            
             return (
               <Alert variant="success" className="text-center">
                 <h4>🎉 Well done!</h4>
                 <p>You have completed all available translations.</p>
+                {reviewerMode && allFilesApproved && (
+                  <div className="mt-3">
+                    <Alert variant="info">
+                      <strong>All files have been reviewed and approved!</strong>
+                      <br />
+                      The translation process is complete.
+                    </Alert>
+                  </div>
+                )}
               </Alert>
             );
           }
@@ -484,16 +623,31 @@ const Translate = () => {
                         : ""
                     }
                   >
-                    <div>
-                      <a
-                        href={card.uri}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                      >
-                        <FaGithub />
-                      </a>{" "}
-                      <strong>{card.lang}: </strong>
-                      {card.labelName}
+                    <div className="d-flex justify-content-between align-items-center">
+                      <div>
+                        <a
+                          href={card.uri}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          <FaGithub />
+                        </a>{" "}
+                        <strong>{card.lang}: </strong>
+                        {card.labelName}
+                      </div>
+                      {reviewerMode && fileApprovalInfo && (
+                        <div>
+                          {fileApprovalInfo.approved ? (
+                            <span className="badge bg-success">
+                              ✓ Approved by {fileApprovalInfo.reviewer}
+                            </span>
+                          ) : (
+                            <span className="badge bg-warning">
+                              ○ Pending Review
+                            </span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </Card.Header>
                   <Card.Body>
@@ -576,7 +730,7 @@ put your translation here
                                 card.lang
                               )
                             }
-                            style={{ marginBottom: "8px", width: "33%" }}
+                            style={{ marginBottom: "8px", width: reviewerMode ? "25%" : "33%" }}
                           >
                             {isEditing ? "Save Translation" : "Confirm"}
                           </Button>
@@ -640,7 +794,7 @@ put your translation here
                               isEditing === "suggestion-in-progress" ||
                               isEditing === "suggestion-done"
                             }
-                            style={{ marginBottom: "8px", width: "33%" }}
+                            style={{ marginBottom: "8px", width: reviewerMode ? "25%" : "33%" }}
                           >
                             {isEditing
                               ? "Make Suggestion"
@@ -650,7 +804,7 @@ put your translation here
                           </Button>
                           <Button
                             variant="danger"
-                            style={{ marginBottom: "8px", width: "33%" }}
+                            style={{ marginBottom: "8px", width: reviewerMode ? "25%" : "33%" }}
                             onClick={async () => {
                               if (
                                 translationValue !== card.labelData.original
@@ -677,6 +831,16 @@ put your translation here
                           >
                             Use Original Value
                           </Button>
+                          {reviewerMode && (
+                            <Button
+                              variant={fileApprovalInfo?.approved ? "outline-success" : "primary"}
+                              style={{ marginBottom: "8px", width: "25%" }}
+                              onClick={() => handleFileApproval(card.filename)}
+                              disabled={fileApprovalInfo?.approved}
+                            >
+                              {fileApprovalInfo?.approved ? "Approved" : "Approve File"}
+                            </Button>
+                          )}
                         </div>
                       </Col>
                     </Row>

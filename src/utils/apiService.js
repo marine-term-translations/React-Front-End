@@ -90,4 +90,30 @@ export const sendUpdateFile = async (filename, translation) => {
   );
 };
 
+// Reviewer functionality
+export const checkFileApprovalStatus = async (prNumber, filePath) => {
+  const response = await axios.get(
+    `${API_BASE_URL}/api/github/pr/${prNumber}/file/${encodeURIComponent(filePath)}/approved`,
+    {
+      params: { repo: REPO },
+      headers: { Authorization: sessionStorage.getItem("github_token") },
+    }
+  );
+  return response.data;
+};
+
+export const approveFile = async (prNumber, filePath, sha) => {
+  const response = await axios.post(
+    `${API_BASE_URL}/api/github/pr/${prNumber}/file/${encodeURIComponent(filePath)}/approve`,
+    {
+      repo: REPO,
+      sha: sha,
+    },
+    {
+      headers: { Authorization: sessionStorage.getItem("github_token") },
+    }
+  );
+  return response.data;
+};
+
 
