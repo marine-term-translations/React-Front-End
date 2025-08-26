@@ -23,6 +23,8 @@ import {
   checkFileApprovalStatus,
   approveFile,
   getCurrentUser,
+  fetchCommits,
+  getReviewers,
 } from "../utils/apiService";
 
 import {
@@ -39,17 +41,14 @@ const Translate = () => {
   const [editableTerm, setEditableTerm] = useState({});
   const [translations, setTranslations] = useState([]);
   const [currentCardIndex, setCurrentCardIndex] = useState(0);
-  const [selectedStatuses] = useState([
-    "Conflict",
-    "No Modified",
-    "Modified",
-  ]);
+  const [selectedStatuses] = useState(["Conflict", "No Modified", "Modified"]);
   const [showToast, setShowToast] = useState(false);
   const [toastMessage, setToastMessage] = useState("");
   const [prNumber, setPrNumber] = useState(null);
   const [fileApprovalStatus, setFileApprovalStatus] = useState({});
   const [reviewerMode, setReviewerMode] = useState(false);
   const [isEligibleReviewer, setIsEligibleReviewer] = useState(false);
+  const [commits, setCommits] = useState([]);
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -64,7 +63,7 @@ const Translate = () => {
     return () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   useEffect(() => {
@@ -182,10 +181,16 @@ const Translate = () => {
 
           const approvalStatusPromises = filteredContents.map(async (file) => {
             try {
-              const approvalStatus = await checkFileApprovalStatus(pullNumber, file.filename);
+              const approvalStatus = await checkFileApprovalStatus(
+                pullNumber,
+                file.filename
+              );
               return { filename: file.filename, ...approvalStatus };
             } catch (error) {
-              console.warn(`Could not check approval status for ${file.filename}:`, error);
+              console.warn(
+                `Could not check approval status for ${file.filename}:`,
+                error
+              );
               return { filename: file.filename, approved: false };
             }
           });
@@ -194,17 +199,19 @@ const Translate = () => {
             const approvalStatuses = await Promise.all(approvalStatusPromises);
             const statusMap = {};
             let reviewers = [];
-            
-            approvalStatuses.forEach(status => {
+
+            try {
+              reviewers = await getReviewers();
+            } catch (error) {
+              console.warn("Could not get reviewers:", error);
+            }
+
+            approvalStatuses.forEach((status) => {
               statusMap[status.filename] = status;
-              // Get eligible reviewers from the first file that has this info
-              if (status.eligible_reviewers && reviewers.length === 0) {
-                reviewers = status.eligible_reviewers;
-              }
             });
-            
+
             setFileApprovalStatus(statusMap);
-            
+
             // Check if current user is eligible reviewer
             if (userInfo && reviewers.includes(userInfo.login)) {
               setIsEligibleReviewer(true);
@@ -220,7 +227,17 @@ const Translate = () => {
         } catch (error) {
           console.warn("Config not available:", error);
         }
-        
+
+        // get the commits
+        try {
+          const commits = await fetchCommits();
+          setCommits(commits);
+          console.log("Commits loaded successfully");
+          console.log("Commits:", commits);
+        } catch (error) {
+          console.warn("Commits not available:", error);
+        }
+
         setLoading(false);
         setError(null);
       } catch (error) {
@@ -380,9 +397,7 @@ const Translate = () => {
     }
   };
 
-
-
-  const handleFileApproval = async (filename) => {
+  const handleFileApproval = async (filename, lang, labelname) => {
     if (!prNumber) {
       alert("No PR found for approval");
       return;
@@ -392,20 +407,23 @@ const Translate = () => {
       // Get the SHA from the diff data
       const responseDiffChanged = await fetchDiffChanged();
       const { diffsData } = responseDiffChanged.data;
-      const fileData = diffsData.find(diff => diff.filename === filename);
-      
+      const fileData = diffsData.find((diff) => diff.filename === filename);
+
       if (!fileData || !fileData.filesha) {
         alert("Could not find file data for approval");
         return;
       }
 
-      await approveFile(prNumber, filename, fileData.filesha);
-      
+      console.log("Approving file:", filename);
+      let latest_commit_sha = commits.data[0].sha;
+
+      await approveFile(prNumber, filename, latest_commit_sha, lang, labelname);
+
       // Update approval status
       const updatedStatus = await checkFileApprovalStatus(prNumber, filename);
-      setFileApprovalStatus(prev => ({
+      setFileApprovalStatus((prev) => ({
         ...prev,
-        [filename]: updatedStatus
+        [filename]: updatedStatus,
       }));
 
       setToastMessage(`File ${filename} has been approved!`);
@@ -459,7 +477,9 @@ const Translate = () => {
       });
 
     // Find the first card for the requested filename
-    const targetCardIndex = filteredCards.findIndex(card => card.filename === filename);
+    const targetCardIndex = filteredCards.findIndex(
+      (card) => card.filename === filename
+    );
     if (targetCardIndex !== -1) {
       setCurrentCardIndex(targetCardIndex);
     }
@@ -529,7 +549,9 @@ const Translate = () => {
                     size="sm"
                     onClick={() => setReviewerMode(!reviewerMode)}
                   >
-                    {reviewerMode ? "Exit Reviewer Mode" : "Enter Reviewer Mode"}
+                    {reviewerMode
+                      ? "Exit Reviewer Mode"
+                      : "Enter Reviewer Mode"}
                   </Button>
                 </div>
               </div>
@@ -541,19 +563,26 @@ const Translate = () => {
                     <strong>File Review Status:</strong>
                     {contents && Object.keys(fileApprovalStatus).length > 0 ? (
                       <div className="mt-2">
-                        {contents.map(file => {
+                        {contents.map((file) => {
                           const status = fileApprovalStatus[file.filename];
                           return (
-                            <div key={file.filename} className="d-flex align-items-center mb-1">
-                              <span className={`badge ${status?.approved ? 'bg-success' : 'bg-warning'} me-2`}>
-                                {status?.approved ? '✓' : '○'}
+                            <div
+                              key={file.filename}
+                              className="d-flex align-items-center mb-1"
+                            >
+                              <span
+                                className={`badge ${
+                                  status?.approved ? "bg-success" : "bg-warning"
+                                } me-2`}
+                              >
+                                {status?.approved ? "✓" : "○"}
                               </span>
-                              <span 
-                                className="text-truncate me-2 text-primary" 
-                                style={{ 
-                                  maxWidth: "400px", 
+                              <span
+                                className="text-truncate me-2 text-primary"
+                                style={{
+                                  maxWidth: "400px",
                                   cursor: "pointer",
-                                  textDecoration: "underline"
+                                  textDecoration: "underline",
                                 }}
                                 onClick={() => navigateToFile(file.filename)}
                                 title="Click to navigate to this file"
@@ -562,7 +591,11 @@ const Translate = () => {
                               </span>
                               {status?.approved && (
                                 <small className="text-muted">
-                                  (Approved by {status.reviewer} on {new Date(status.timestamp).toLocaleDateString()})
+                                  (Approved by {status.reviewer} on{" "}
+                                  {new Date(
+                                    status.timestamp
+                                  ).toLocaleDateString()}
+                                  )
                                 </small>
                               )}
                             </div>
@@ -570,7 +603,9 @@ const Translate = () => {
                         })}
                       </div>
                     ) : (
-                      <span className="text-muted ms-2">Loading file status...</span>
+                      <span className="text-muted ms-2">
+                        Loading file status...
+                      </span>
                     )}
                   </div>
                 </div>
@@ -617,7 +652,7 @@ const Translate = () => {
             passed = [];
           }
           console.log("passed", passed);
-          
+
           filteredCards = cards
             .filter((card) => selectedStatuses.includes(card.status))
             .filter((card) => {
@@ -629,9 +664,13 @@ const Translate = () => {
 
           if (!card) {
             // Check if all files have been reviewed when there are no more cards
-            const allFilesApproved = contents && contents.length > 0 && 
-              contents.every(file => fileApprovalStatus[file.filename]?.approved);
-            
+            const allFilesApproved =
+              contents &&
+              contents.length > 0 &&
+              contents.every(
+                (file) => fileApprovalStatus[file.filename]?.approved
+              );
+
             return (
               <Alert variant="success" className="text-center">
                 <h4>🎉 Well done!</h4>
@@ -639,7 +678,9 @@ const Translate = () => {
                 {reviewerMode && allFilesApproved && (
                   <div className="mt-3">
                     <Alert variant="info">
-                      <strong>All files have been reviewed and approved!</strong>
+                      <strong>
+                        All files have been reviewed and approved!
+                      </strong>
                       <br />
                       The translation process is complete.
                     </Alert>
@@ -754,7 +795,7 @@ const Translate = () => {
                               >
                                 {translationValue || (
                                   <span style={{ color: "#aaa" }}>
-put your translation here
+                                    put your translation here
                                   </span>
                                 )}
                               </div>
@@ -810,7 +851,10 @@ put your translation here
                                 card.lang
                               )
                             }
-                            style={{ marginBottom: "8px", width: reviewerMode ? "25%" : "33%" }}
+                            style={{
+                              marginBottom: "8px",
+                              width: reviewerMode ? "25%" : "33%",
+                            }}
                           >
                             {isEditing ? "Save Translation" : "Confirm"}
                           </Button>
@@ -874,7 +918,10 @@ put your translation here
                               isEditing === "suggestion-in-progress" ||
                               isEditing === "suggestion-done"
                             }
-                            style={{ marginBottom: "8px", width: reviewerMode ? "25%" : "33%" }}
+                            style={{
+                              marginBottom: "8px",
+                              width: reviewerMode ? "25%" : "33%",
+                            }}
                           >
                             {isEditing
                               ? "Make Suggestion"
@@ -884,7 +931,10 @@ put your translation here
                           </Button>
                           <Button
                             variant="danger"
-                            style={{ marginBottom: "8px", width: reviewerMode ? "25%" : "33%" }}
+                            style={{
+                              marginBottom: "8px",
+                              width: reviewerMode ? "25%" : "33%",
+                            }}
                             onClick={async () => {
                               if (
                                 translationValue !== card.labelData.original
@@ -913,12 +963,24 @@ put your translation here
                           </Button>
                           {reviewerMode && (
                             <Button
-                              variant={fileApprovalInfo?.approved ? "outline-success" : "primary"}
+                              variant={
+                                fileApprovalInfo?.approved
+                                  ? "outline-success"
+                                  : "primary"
+                              }
                               style={{ marginBottom: "8px", width: "25%" }}
-                              onClick={() => handleFileApproval(card.filename)}
+                              onClick={() =>
+                                handleFileApproval(
+                                  card.filename,
+                                  card.lang,
+                                  card.labelName
+                                )
+                              }
                               disabled={fileApprovalInfo?.approved}
                             >
-                              {fileApprovalInfo?.approved ? "Approved" : "Approve File"}
+                              {fileApprovalInfo?.approved
+                                ? "Approved"
+                                : "Approve File"}
                             </Button>
                           )}
                         </div>
