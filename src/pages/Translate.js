@@ -22,6 +22,7 @@ import {
   sendUpdateFile,
   checkFileApprovalStatus,
   approveFile,
+  getCurrentUser,
 } from "../utils/apiService";
 
 import {
@@ -48,6 +49,7 @@ const Translate = () => {
   const [prNumber, setPrNumber] = useState(null);
   const [fileApprovalStatus, setFileApprovalStatus] = useState({});
   const [reviewerMode, setReviewerMode] = useState(false);
+  const [isEligibleReviewer, setIsEligibleReviewer] = useState(false);
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -170,6 +172,14 @@ const Translate = () => {
 
         // Check file approval status if we have a PR number
         if (pullNumber) {
+          // Get current user info
+          let userInfo = null;
+          try {
+            userInfo = await getCurrentUser();
+          } catch (error) {
+            console.warn("Could not get current user info:", error);
+          }
+
           const approvalStatusPromises = filteredContents.map(async (file) => {
             try {
               const approvalStatus = await checkFileApprovalStatus(pullNumber, file.filename);
@@ -183,10 +193,22 @@ const Translate = () => {
           try {
             const approvalStatuses = await Promise.all(approvalStatusPromises);
             const statusMap = {};
+            let reviewers = [];
+            
             approvalStatuses.forEach(status => {
               statusMap[status.filename] = status;
+              // Get eligible reviewers from the first file that has this info
+              if (status.eligible_reviewers && reviewers.length === 0) {
+                reviewers = status.eligible_reviewers;
+              }
             });
+            
             setFileApprovalStatus(statusMap);
+            
+            // Check if current user is eligible reviewer
+            if (userInfo && reviewers.includes(userInfo.login)) {
+              setIsEligibleReviewer(true);
+            }
           } catch (error) {
             console.warn("Error checking file approval statuses:", error);
           }
@@ -394,6 +416,55 @@ const Translate = () => {
     }
   };
 
+  const navigateToFile = (filename) => {
+    // Generate all cards like in the render method
+    const cards = [];
+    transformedData.forEach((data) => {
+      Object.entries(data.label[0]).forEach(([labelName, labelData]) => {
+        Object.keys(labelData).forEach((lang) => {
+          if (lang === "original" || lang === "status") return;
+          cards.push({
+            filename: data.filename,
+            uri: data.uri,
+            labelName,
+            labelData,
+            lang,
+            status: labelData.status,
+          });
+        });
+      });
+    });
+
+    const statusOrder = {
+      Conflict: 0,
+      "No Modified": 1,
+      Modified: 2,
+      Empty: 3,
+    };
+    cards.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+
+    // Filter cards by selected statuses and not in passed cards
+    let passed = [];
+    try {
+      passed = JSON.parse(sessionStorage.getItem("passedCards") || "[]");
+    } catch {
+      passed = [];
+    }
+
+    const filteredCards = cards
+      .filter((card) => selectedStatuses.includes(card.status))
+      .filter((card) => {
+        const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
+        return !passed.includes(key);
+      });
+
+    // Find the first card for the requested filename
+    const targetCardIndex = filteredCards.findIndex(card => card.filename === filename);
+    if (targetCardIndex !== -1) {
+      setCurrentCardIndex(targetCardIndex);
+    }
+  };
+
   const isEmpty = (str) => {
     return !str || !/[a-zA-Z0-9]/.test(str);
   };
@@ -444,7 +515,7 @@ const Translate = () => {
   return (
     <div>
       {/* Reviewer Status Bar */}
-      {prNumber && (
+      {prNumber && isEligibleReviewer && (
         <div className="mb-4">
           <Card>
             <Card.Header className="bg-primary text-white">
@@ -477,7 +548,16 @@ const Translate = () => {
                               <span className={`badge ${status?.approved ? 'bg-success' : 'bg-warning'} me-2`}>
                                 {status?.approved ? '✓' : '○'}
                               </span>
-                              <span className="text-truncate me-2" style={{ maxWidth: "400px" }}>
+                              <span 
+                                className="text-truncate me-2 text-primary" 
+                                style={{ 
+                                  maxWidth: "400px", 
+                                  cursor: "pointer",
+                                  textDecoration: "underline"
+                                }}
+                                onClick={() => navigateToFile(file.filename)}
+                                title="Click to navigate to this file"
+                              >
                                 {file.filename}
                               </span>
                               {status?.approved && (

@@ -90,6 +90,17 @@ export const sendUpdateFile = async (filename, translation) => {
   );
 };
 
+// Get current GitHub user
+export const getCurrentUser = async () => {
+  const response = await axios.get(
+    `https://api.github.com/user`,
+    {
+      headers: { Authorization: sessionStorage.getItem("github_token") },
+    }
+  );
+  return response.data;
+};
+
 // Reviewer functionality
 export const checkFileApprovalStatus = async (prNumber, filePath) => {
   const response = await axios.get(
