@@ -412,9 +412,10 @@ const Translate = () => {
       const fileApprovalDetails = {};
       updatedStatus.approvedLabels?.forEach((approvedItem) => {
         // Handle both legacy string format and new object format
-        const labelName = typeof approvedItem === 'string' ? approvedItem : approvedItem.label;
-        
-        if (typeof approvedItem === 'object' && approvedItem.reviewer) {
+        const labelName =
+          typeof approvedItem === "string" ? approvedItem : approvedItem.label;
+
+        if (typeof approvedItem === "object" && approvedItem.reviewer) {
           // Use the data from the new API response structure
           fileApprovalDetails[labelName] = {
             approver: approvedItem.reviewer,
@@ -449,11 +450,11 @@ const Translate = () => {
         ...prev,
         [filename]: {
           approved: updatedStatus.approved,
-          approvedLabels: (updatedStatus.approvedLabels || []).map(
-            item => typeof item === 'string' ? item : item.label
+          approvedLabels: (updatedStatus.approvedLabels || []).map((item) =>
+            typeof item === "string" ? item : item.label
           ),
-          unapprovedLabels: (updatedStatus.unapprovedLabels || []).map(
-            item => typeof item === 'string' ? item : item.label
+          unapprovedLabels: (updatedStatus.unapprovedLabels || []).map((item) =>
+            typeof item === "string" ? item : item.label
           ),
         },
       }));
@@ -604,16 +605,19 @@ const Translate = () => {
                               return {
                                 filename: file.filename,
                                 approved: approvalStatus.approved,
-                                approvedLabels:
-                                  (approvalStatus.approvedLabels || []).map(
-                                    item => typeof item === 'string' ? item : item.label
-                                  ),
-                                unapprovedLabels:
-                                  (approvalStatus.unapprovedLabels || []).map(
-                                    item => typeof item === 'string' ? item : item.label
-                                  ),
+                                approvedLabels: (
+                                  approvalStatus.approvedLabels || []
+                                ).map((item) =>
+                                  typeof item === "string" ? item : item.label
+                                ),
+                                unapprovedLabels: (
+                                  approvalStatus.unapprovedLabels || []
+                                ).map((item) =>
+                                  typeof item === "string" ? item : item.label
+                                ),
                                 // Store raw approval data for processing approval details
-                                rawApprovedLabels: approvalStatus.approvedLabels || [],
+                                rawApprovedLabels:
+                                  approvalStatus.approvedLabels || [],
                               };
                             } catch (error) {
                               console.warn(
@@ -650,35 +654,43 @@ const Translate = () => {
 
                             const fileApprovalDetails = {};
                             // Use raw approval data to access metadata
-                            status.rawApprovedLabels?.forEach((approvedItem) => {
-                              // Handle both legacy string format and new object format
-                              const labelName = typeof approvedItem === 'string' ? approvedItem : approvedItem.label;
-                              
-                              if (typeof approvedItem === 'object' && approvedItem.reviewer) {
-                                // Use the data from the new API response structure
-                                fileApprovalDetails[labelName] = {
-                                  approver: approvedItem.reviewer,
-                                  approvedAt: approvedItem.timestamp,
-                                  commentUrl: approvedItem.comment_url,
-                                };
-                              } else {
-                                // Fallback to finding the comment manually (for legacy support)
-                                const approvalComment = comments.find(
-                                  (comment) =>
-                                    comment.path === status.filename &&
-                                    comment.body.trim().toLowerCase() ===
-                                      `approved-${labelName}`.toLowerCase()
-                                );
+                            status.rawApprovedLabels?.forEach(
+                              (approvedItem) => {
+                                // Handle both legacy string format and new object format
+                                const labelName =
+                                  typeof approvedItem === "string"
+                                    ? approvedItem
+                                    : approvedItem.label;
 
-                                if (approvalComment) {
+                                if (
+                                  typeof approvedItem === "object" &&
+                                  approvedItem.reviewer
+                                ) {
+                                  // Use the data from the new API response structure
                                   fileApprovalDetails[labelName] = {
-                                    approver: approvalComment.user.login,
-                                    approvedAt: approvalComment.created_at,
-                                    commentUrl: approvalComment.html_url,
+                                    approver: approvedItem.reviewer,
+                                    approvedAt: approvedItem.timestamp,
+                                    commentUrl: approvedItem.comment_url,
                                   };
+                                } else {
+                                  // Fallback to finding the comment manually (for legacy support)
+                                  const approvalComment = comments.find(
+                                    (comment) =>
+                                      comment.path === status.filename &&
+                                      comment.body.trim().toLowerCase() ===
+                                        `approved-${labelName}`.toLowerCase()
+                                  );
+
+                                  if (approvalComment) {
+                                    fileApprovalDetails[labelName] = {
+                                      approver: approvalComment.user.login,
+                                      approvedAt: approvalComment.created_at,
+                                      commentUrl: approvalComment.html_url,
+                                    };
+                                  }
                                 }
                               }
-                            });
+                            );
 
                             approvalDetailsMap[status.filename] =
                               fileApprovalDetails;
@@ -720,6 +732,37 @@ const Translate = () => {
                             status?.unapprovedLabels?.length || 0;
                           const totalLabels = approvedCount + unapprovedCount;
 
+                          // The pending review count are the labels whose value is not empty or "to be filled in"
+                          const pendingCount = (() => {
+                            const fileData = transformedData.find(
+                              (data) => data.filename === file.filename
+                            );
+                            if (!fileData) return 0;
+                            let count = 0;
+                            Object.entries(fileData.label[0]).forEach(
+                              ([labelName, labelData]) => {
+                                // Only count unapproved labels
+                                if (
+                                  status?.unapprovedLabels?.includes(labelName)
+                                ) {
+                                  // Check if any language translation is non-empty and not "to be filled in"
+                                  const hasTranslation = Object.entries(
+                                    labelData
+                                  ).some(
+                                    ([lang, value]) =>
+                                      lang !== "original" &&
+                                      lang !== "status" &&
+                                      value &&
+                                      value.trim() !== "" &&
+                                      value !== "to be filled in"
+                                  );
+                                  if (hasTranslation) count++;
+                                }
+                              }
+                            );
+                            return count;
+                          })();
+
                           return (
                             <div
                               key={file.filename}
@@ -756,9 +799,9 @@ const Translate = () => {
                                     Labels: {approvedCount}/{totalLabels}{" "}
                                     approved
                                   </div>
-                                  {unapprovedCount > 0 && (
+                                  {pendingCount > 0 && (
                                     <div className="small text-warning">
-                                      {unapprovedCount} pending review
+                                      {pendingCount} pending review
                                     </div>
                                   )}
                                 </div>
