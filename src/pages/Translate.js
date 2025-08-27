@@ -37,6 +37,8 @@ const Translate = () => {
   const navigate = useNavigate();
   const [error, setError] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [reviewerModeFirstClicked, setReviewerModeFirstClicked] =
+    useState(false);
   const [contents, setContents] = useState(null);
   const [modalShow, setModalShow] = useState(false);
   const [editableTerm, setEditableTerm] = useState({});
@@ -191,78 +193,15 @@ const Translate = () => {
             console.warn("Could not get PR comments:", error);
           }
 
-          const approvalStatusPromises = filteredContents.map(async (file) => {
-            try {
-              const approvalStatus = await checkFileApprovalStatus(
-                pullNumber,
-                file.filename
-              );
-              // Store both file-level and label-level status
-              return { 
-                filename: file.filename, 
-                approved: approvalStatus.approved,
-                approvedLabels: approvalStatus.approvedLabels || [],
-                unapprovedLabels: approvalStatus.unapprovedLabels || []
-              };
-            } catch (error) {
-              console.warn(
-                `Could not check approval status for ${file.filename}:`,
-                error
-              );
-              return { 
-                filename: file.filename, 
-                approved: false,
-                approvedLabels: [],
-                unapprovedLabels: []
-              };
-            }
-          });
-
+          let reviewers = [];
           try {
-            const approvalStatuses = await Promise.all(approvalStatusPromises);
-            const statusMap = {};
-            const approvalDetailsMap = {};
-            let reviewers = [];
-
-            try {
-              reviewers = await getReviewers();
-            } catch (error) {
-              console.warn("Could not get reviewers:", error);
-            }
-
-            approvalStatuses.forEach((status) => {
-              statusMap[status.filename] = status;
-              
-              // Process approval details from comments
-              const fileApprovalDetails = {};
-              status.approvedLabels?.forEach((labelName) => {
-                // Find comments for this label approval
-                const approvalComment = comments.find(comment => 
-                  comment.path === status.filename && 
-                  comment.body.trim().toLowerCase() === `approved-${labelName}`.toLowerCase()
-                );
-                
-                if (approvalComment) {
-                  fileApprovalDetails[labelName] = {
-                    approver: approvalComment.user.login,
-                    approvedAt: approvalComment.created_at,
-                    commentUrl: approvalComment.html_url
-                  };
-                }
-              });
-              
-              approvalDetailsMap[status.filename] = fileApprovalDetails;
-            });
-
-            setFileApprovalStatus(statusMap);
-            setApprovalDetails(approvalDetailsMap);
-
-            // Check if current user is eligible reviewer
-            if (userInfo && reviewers.includes(userInfo.login)) {
-              setIsEligibleReviewer(true);
-            }
+            reviewers = await getReviewers();
           } catch (error) {
-            console.warn("Error checking file approval statuses:", error);
+            console.warn("Could not get reviewers:", error);
+          }
+
+          if (userInfo && reviewers.includes(userInfo.login)) {
+            setIsEligibleReviewer(true);
           }
         }
 
@@ -466,42 +405,46 @@ const Translate = () => {
 
       // Update approval status for the specific file
       const updatedStatus = await checkFileApprovalStatus(prNumber, filename);
-      
+
       // Get updated PR comments to refresh approval details
       const updatedComments = await getPRComments(prNumber);
-      
+
       // Update approval details
       const fileApprovalDetails = {};
       updatedStatus.approvedLabels?.forEach((labelName) => {
-        const approvalComment = updatedComments.find(comment => 
-          comment.path === filename && 
-          comment.body.trim().toLowerCase() === `approved-${labelName}`.toLowerCase()
+        const approvalComment = updatedComments.find(
+          (comment) =>
+            comment.path === filename &&
+            comment.body.trim().toLowerCase() ===
+              `approved-${labelName}`.toLowerCase()
         );
-        
+
         if (approvalComment) {
           fileApprovalDetails[labelName] = {
             approver: approvalComment.user.login,
             approvedAt: approvalComment.created_at,
-            commentUrl: approvalComment.html_url
+            commentUrl: approvalComment.html_url,
           };
         }
       });
-      
+
       setApprovalDetails((prev) => ({
         ...prev,
         [filename]: fileApprovalDetails,
       }));
-      
+
       setFileApprovalStatus((prev) => ({
         ...prev,
         [filename]: {
           approved: updatedStatus.approved,
           approvedLabels: updatedStatus.approvedLabels || [],
-          unapprovedLabels: updatedStatus.unapprovedLabels || []
+          unapprovedLabels: updatedStatus.unapprovedLabels || [],
         },
       }));
 
-      setToastMessage(`Label "${labelname}" in file ${filename} has been approved!`);
+      setToastMessage(
+        `Label "${labelname}" in file ${filename} has been approved!`
+      );
       setShowToast(true);
     } catch (error) {
       console.error("Error approving file:", error);
@@ -630,7 +573,91 @@ const Translate = () => {
                   <Button
                     variant={reviewerMode ? "warning" : "light"}
                     size="sm"
-                    onClick={() => setReviewerMode(!reviewerMode)}
+                    onClick={async () => {
+                      if (!reviewerMode && !reviewerModeFirstClicked) {
+                        // First time entering reviewer mode, check all file statuses
+                        setReviewerModeFirstClicked(true);
+                        const approvalStatusPromises = contents.map(
+                          async (file) => {
+                            try {
+                              const approvalStatus =
+                                await checkFileApprovalStatus(
+                                  prNumber,
+                                  file.filename
+                                );
+                              return {
+                                filename: file.filename,
+                                approved: approvalStatus.approved,
+                                approvedLabels:
+                                  approvalStatus.approvedLabels || [],
+                                unapprovedLabels:
+                                  approvalStatus.unapprovedLabels || [],
+                              };
+                            } catch (error) {
+                              console.warn(
+                                `Could not check approval status for ${file.filename}:`,
+                                error
+                              );
+                              return {
+                                filename: file.filename,
+                                approved: false,
+                                approvedLabels: [],
+                                unapprovedLabels: [],
+                              };
+                            }
+                          }
+                        );
+
+                        let comments = [];
+                        try {
+                          comments = await getPRComments(prNumber);
+                        } catch (error) {
+                          console.warn("Could not get PR comments:", error);
+                        }
+
+                        try {
+                          const approvalStatuses = await Promise.all(
+                            approvalStatusPromises
+                          );
+                          const statusMap = {};
+                          const approvalDetailsMap = {};
+
+                          approvalStatuses.forEach((status) => {
+                            statusMap[status.filename] = status;
+
+                            const fileApprovalDetails = {};
+                            status.approvedLabels?.forEach((labelName) => {
+                              const approvalComment = comments.find(
+                                (comment) =>
+                                  comment.path === status.filename &&
+                                  comment.body.trim().toLowerCase() ===
+                                    `approved-${labelName}`.toLowerCase()
+                              );
+
+                              if (approvalComment) {
+                                fileApprovalDetails[labelName] = {
+                                  approver: approvalComment.user.login,
+                                  approvedAt: approvalComment.created_at,
+                                  commentUrl: approvalComment.html_url,
+                                };
+                              }
+                            });
+
+                            approvalDetailsMap[status.filename] =
+                              fileApprovalDetails;
+                          });
+
+                          setFileApprovalStatus(statusMap);
+                          setApprovalDetails(approvalDetailsMap);
+                        } catch (error) {
+                          console.warn(
+                            "Error checking file approval statuses:",
+                            error
+                          );
+                        }
+                      }
+                      setReviewerMode(!reviewerMode);
+                    }}
                   >
                     {reviewerMode
                       ? "Exit Reviewer Mode"
@@ -648,11 +675,14 @@ const Translate = () => {
                       <div className="mt-2">
                         {contents.map((file) => {
                           const status = fileApprovalStatus[file.filename];
-                          const fileApprovalInfo = approvalDetails[file.filename] || {};
-                          const approvedCount = status?.approvedLabels?.length || 0;
-                          const unapprovedCount = status?.unapprovedLabels?.length || 0;
+                          const fileApprovalInfo =
+                            approvalDetails[file.filename] || {};
+                          const approvedCount =
+                            status?.approvedLabels?.length || 0;
+                          const unapprovedCount =
+                            status?.unapprovedLabels?.length || 0;
                           const totalLabels = approvedCount + unapprovedCount;
-                          
+
                           return (
                             <div
                               key={file.filename}
@@ -662,7 +692,9 @@ const Translate = () => {
                                 <div className="d-flex align-items-center">
                                   <span
                                     className={`badge ${
-                                      status?.approved ? "bg-success" : "bg-warning"
+                                      status?.approved
+                                        ? "bg-success"
+                                        : "bg-warning"
                                     } me-2`}
                                   >
                                     {status?.approved ? "✓" : "○"}
@@ -674,7 +706,9 @@ const Translate = () => {
                                       cursor: "pointer",
                                       textDecoration: "underline",
                                     }}
-                                    onClick={() => navigateToFile(file.filename)}
+                                    onClick={() =>
+                                      navigateToFile(file.filename)
+                                    }
                                     title="Click to review labels in this file"
                                   >
                                     {file.filename}
@@ -682,7 +716,8 @@ const Translate = () => {
                                 </div>
                                 <div className="text-end">
                                   <div className="small text-muted">
-                                    Labels: {approvedCount}/{totalLabels} approved
+                                    Labels: {approvedCount}/{totalLabels}{" "}
+                                    approved
                                   </div>
                                   {unapprovedCount > 0 && (
                                     <div className="small text-warning">
@@ -691,31 +726,49 @@ const Translate = () => {
                                   )}
                                 </div>
                               </div>
-                              {(status?.approvedLabels?.length > 0 || status?.unapprovedLabels?.length > 0) && (
+                              {(status?.approvedLabels?.length > 0 ||
+                                status?.unapprovedLabels?.length > 0) && (
                                 <div className="mt-2">
                                   {status?.approvedLabels?.length > 0 && (
                                     <div className="mb-1">
-                                      <small className="text-success fw-bold">Approved: </small>
+                                      <small className="text-success fw-bold">
+                                        Approved:{" "}
+                                      </small>
                                       <div className="ms-2">
-                                        {status.approvedLabels.map((labelName) => {
-                                          const approvalInfo = fileApprovalInfo[labelName];
-                                          return (
-                                            <div key={labelName} className="mb-1">
-                                              <span className="small text-muted">{labelName}</span>
-                                              {approvalInfo && (
-                                                <span className="small text-muted ms-2">
-                                                  (by {approvalInfo.approver} on {new Date(approvalInfo.approvedAt).toLocaleDateString()})
+                                        {status.approvedLabels.map(
+                                          (labelName) => {
+                                            const approvalInfo =
+                                              fileApprovalInfo[labelName];
+                                            return (
+                                              <div
+                                                key={labelName}
+                                                className="mb-1"
+                                              >
+                                                <span className="small text-muted">
+                                                  {labelName}
                                                 </span>
-                                              )}
-                                            </div>
-                                          );
-                                        })}
+                                                {approvalInfo && (
+                                                  <span className="small text-muted ms-2">
+                                                    (by {approvalInfo.approver}{" "}
+                                                    on{" "}
+                                                    {new Date(
+                                                      approvalInfo.approvedAt
+                                                    ).toLocaleDateString()}
+                                                    )
+                                                  </span>
+                                                )}
+                                              </div>
+                                            );
+                                          }
+                                        )}
                                       </div>
                                     </div>
                                   )}
                                   {status?.unapprovedLabels?.length > 0 && (
                                     <div>
-                                      <small className="text-warning fw-bold">Pending: </small>
+                                      <small className="text-warning fw-bold">
+                                        Pending:{" "}
+                                      </small>
                                       <small className="text-muted">
                                         {status.unapprovedLabels.join(", ")}
                                       </small>
@@ -786,9 +839,11 @@ const Translate = () => {
             });
           const card = filteredCards[currentCardIndex];
           const fileApprovalInfo = fileApprovalStatus[card?.filename];
-          
+
           // Check if this specific label is approved
-          const isLabelApproved = fileApprovalInfo?.approvedLabels?.includes(card?.labelName);
+          const isLabelApproved = fileApprovalInfo?.approvedLabels?.includes(
+            card?.labelName
+          );
 
           if (!card) {
             // Check if all files have been reviewed when there are no more cards
@@ -1092,9 +1147,7 @@ const Translate = () => {
                           {reviewerMode && (
                             <Button
                               variant={
-                                isLabelApproved
-                                  ? "outline-success"
-                                  : "primary"
+                                isLabelApproved ? "outline-success" : "primary"
                               }
                               style={{ marginBottom: "8px", width: "25%" }}
                               onClick={() =>
@@ -1176,7 +1229,8 @@ const Translate = () => {
           <Modal.Body>
             {(() => {
               const fileStatus = fileApprovalStatus[selectedFileForReview];
-              const fileApprovalInfo = approvalDetails[selectedFileForReview] || {};
+              const fileApprovalInfo =
+                approvalDetails[selectedFileForReview] || {};
               const fileData = transformedData.find(
                 (data) => data.filename === selectedFileForReview
               );
@@ -1186,30 +1240,38 @@ const Translate = () => {
               }
 
               // Filter out unapproved labels that have empty/undefined values to avoid confusion
-              const filteredUnapprovedLabels = fileStatus?.unapprovedLabels?.filter(labelName => {
-                const labelData = fileData.label[0][labelName];
-                if (!labelData) return false;
-                
-                // Check if any language has a non-empty value
-                const translations = Object.entries(labelData).filter(
-                  ([key]) => key !== "original" && key !== "status"
-                );
-                
-                return translations.some(([lang, translation]) => 
-                  translation && translation.trim() !== "" && translation !== "to be filled in"
-                );
-              }) || [];
+              const filteredUnapprovedLabels =
+                fileStatus?.unapprovedLabels?.filter((labelName) => {
+                  const labelData = fileData.label[0][labelName];
+                  if (!labelData) return false;
+
+                  // Check if any language has a non-empty value
+                  const translations = Object.entries(labelData).filter(
+                    ([key]) => key !== "original" && key !== "status"
+                  );
+
+                  return translations.some(
+                    ([lang, translation]) =>
+                      translation &&
+                      translation.trim() !== "" &&
+                      translation !== "to be filled in"
+                  );
+                }) || [];
 
               return (
                 <div>
                   <div className="mb-3">
                     <strong>File: </strong>
-                    <span className="text-primary">{selectedFileForReview}</span>
+                    <span className="text-primary">
+                      {selectedFileForReview}
+                    </span>
                   </div>
-                  
+
                   {filteredUnapprovedLabels.length > 0 && (
                     <div className="mb-4">
-                      <h6 className="text-warning">🔍 Labels Pending Review:</h6>
+                      <h6 className="text-warning">
+                        🔍 Labels Pending Review:
+                      </h6>
                       <div className="list-group">
                         {filteredUnapprovedLabels.map((labelName) => {
                           const labelData = fileData.label[0][labelName];
@@ -1217,11 +1279,11 @@ const Translate = () => {
 
                           // Get all language translations for this label (excluding empty ones)
                           const translations = Object.entries(labelData).filter(
-                            ([key, value]) => 
-                              key !== "original" && 
-                              key !== "status" && 
-                              value && 
-                              value.trim() !== "" && 
+                            ([key, value]) =>
+                              key !== "original" &&
+                              key !== "status" &&
+                              value &&
+                              value.trim() !== "" &&
                               value !== "to be filled in"
                           );
 
@@ -1229,9 +1291,12 @@ const Translate = () => {
                             <div key={labelName} className="list-group-item">
                               <div className="d-flex justify-content-between align-items-start">
                                 <div className="flex-grow-1">
-                                  <h6 className="mb-1 text-dark">{labelName}</h6>
+                                  <h6 className="mb-1 text-dark">
+                                    {labelName}
+                                  </h6>
                                   <p className="mb-2 text-muted small">
-                                    <strong>Original:</strong> {labelData.original}
+                                    <strong>Original:</strong>{" "}
+                                    {labelData.original}
                                   </p>
                                   <div className="row">
                                     {translations.map(([lang, translation]) => (
@@ -1251,7 +1316,11 @@ const Translate = () => {
                                       size="sm"
                                       className="me-1 mb-1"
                                       onClick={() => {
-                                        handleFileApproval(selectedFileForReview, lang, labelName);
+                                        handleFileApproval(
+                                          selectedFileForReview,
+                                          lang,
+                                          labelName
+                                        );
                                       }}
                                     >
                                       Approve {lang}
@@ -1273,19 +1342,32 @@ const Translate = () => {
                         {fileStatus.approvedLabels.map((labelName) => {
                           const approvalInfo = fileApprovalInfo[labelName];
                           return (
-                            <div key={labelName} className="list-group-item list-group-item-success">
+                            <div
+                              key={labelName}
+                              className="list-group-item list-group-item-success"
+                            >
                               <div className="d-flex align-items-center justify-content-between">
                                 <div className="d-flex align-items-center">
-                                  <span className="badge bg-success me-2">✓</span>
+                                  <span className="badge bg-success me-2">
+                                    ✓
+                                  </span>
                                   <span className="fw-bold">{labelName}</span>
                                 </div>
                                 {approvalInfo && (
                                   <div className="text-end">
                                     <div className="small text-muted">
-                                      <strong>Approved by:</strong> {approvalInfo.approver}
+                                      <strong>Approved by:</strong>{" "}
+                                      {approvalInfo.approver}
                                     </div>
                                     <div className="small text-muted">
-                                      <strong>Date:</strong> {new Date(approvalInfo.approvedAt).toLocaleDateString()} at {new Date(approvalInfo.approvedAt).toLocaleTimeString()}
+                                      <strong>Date:</strong>{" "}
+                                      {new Date(
+                                        approvalInfo.approvedAt
+                                      ).toLocaleDateString()}{" "}
+                                      at{" "}
+                                      {new Date(
+                                        approvalInfo.approvedAt
+                                      ).toLocaleTimeString()}
                                     </div>
                                   </div>
                                 )}
@@ -1299,7 +1381,9 @@ const Translate = () => {
 
                   {fileStatus?.approved && (
                     <Alert variant="success" className="mt-3">
-                      <strong>🎉 All labels in this file have been approved!</strong>
+                      <strong>
+                        🎉 All labels in this file have been approved!
+                      </strong>
                     </Alert>
                   )}
                 </div>
