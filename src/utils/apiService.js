@@ -57,6 +57,22 @@ export const fetchDiffChanged = async () => {
   return response;
 };
 
+export const fetchCommits = async () => {
+  const response = await axios.get(
+    `${process.env.REACT_APP_BACK_URL}/api/github/commits`,
+    {
+      params: {
+        repo: process.env.REACT_APP_REPO,
+        branch: sessionStorage.getItem("branch"),
+      },
+      headers: {
+        Authorization: sessionStorage.getItem("github_token"),
+      },
+    }
+  );
+  return response;
+};
+
 export const fetchContent = async (path) => {
   const response = await axios.get(
     `${process.env.REACT_APP_BACK_URL}/api/github/content`,
@@ -88,4 +104,62 @@ export const sendUpdateFile = async (filename, translation) => {
       },
     }
   );
+};
+
+// Get current GitHub user
+export const getCurrentUser = async () => {
+  const response = await axios.get(`${API_BASE_URL}/api/github/user`, {
+    headers: { Authorization: sessionStorage.getItem("github_token") },
+  });
+  return response.data;
+};
+
+// Reviewer functionality
+export const checkFileApprovalStatus = async (prNumber, filePath) => {
+  const response = await axios.get(
+    `${API_BASE_URL}/api/github/pr/${prNumber}/file/${encodeURIComponent(
+      filePath
+    )}/approved`,
+    {
+      params: { repo: REPO, branch: sessionStorage.getItem("branch") },
+      headers: { Authorization: sessionStorage.getItem("github_token") },
+    }
+  );
+  return response.data;
+};
+
+// retrieve list of reviewers
+export const getReviewers = async () => {
+  const response = await axios.get(`${API_BASE_URL}/api/github/reviewers`, {
+    params: { repo: REPO, branch: sessionStorage.getItem("branch") },
+    headers: { Authorization: sessionStorage.getItem("github_token") },
+  });
+  return response.data;
+};
+
+export const approveFile = async (prNumber, filePath, sha, lang, labelName) => {
+  const response = await axios.post(
+    `${API_BASE_URL}/api/github/pr/${prNumber}/file/${encodeURIComponent(
+      filePath
+    )}/approve`,
+    {
+      repo: REPO,
+      sha: sha,
+      lang: lang,
+      label_name: labelName,
+    },
+    {
+      headers: { Authorization: sessionStorage.getItem("github_token") },
+    }
+  );
+  return response.data;
+};
+
+// Get all comments for a PR
+export const getPRComments = async (prNumber) => {
+  const response = await axios.get(`${API_BASE_URL}/api/github/pr/comments`, {
+    params: { repo: REPO, prNumber: prNumber },
+    headers: { Authorization: sessionStorage.getItem("github_token") },
+  });
+  return response.data;
 };

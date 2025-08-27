@@ -1,12 +1,9 @@
 import * as N3 from "n3";
 import { Store } from "n3";
-import { QueryEngine as QueryEngineTraversal } from "@comunica/query-sparql-link-traversal";
 import { QueryEngine } from "@comunica/query-sparql";
-import { BindingsStream, Bindings } from "@comunica/types";
 import jsonld from "jsonld";
 
 const engine = new QueryEngine();
-const linkengine = new QueryEngineTraversal();
 
 export const comunicaQuery = async (query, og_sources) => {
   return await engine.queryBindings(query, {

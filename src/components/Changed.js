@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import { Modal, Button, Spinner, Alert, Form, Table } from "react-bootstrap";
 import axios from "axios";
 import DiffViewer from "react-diff-viewer-continued";
@@ -30,7 +30,7 @@ const Changed = () => {
     return !str || !/[a-zA-Z0-9]/.test(str) || str === "to be filled in";
   };
 
-  const emptyCounts = async () => {
+  const emptyCounts = useCallback(async () => {
     const responseDiff = await axios.get(
       `${process.env.REACT_APP_BACK_URL}/api/github/diff`,
       {
@@ -79,7 +79,7 @@ const Changed = () => {
 
     setEmptyField(translationCounts);
     setEmptyFieldFile(fileCounts);
-  };
+  }, []);
 
   useEffect(() => {
     if (!sessionStorage.getItem("github_token")) {
@@ -143,7 +143,7 @@ const Changed = () => {
     };
 
     fetchData();
-  }, []);
+  }, [emptyCounts, navigate]);
 
   if (loading) {
     return (
