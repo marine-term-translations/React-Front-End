@@ -4,6 +4,7 @@ import axios from "axios";
 import DiffViewer from "react-diff-viewer-continued";
 import { formatInTimeZone } from "date-fns-tz";
 import { useNavigate } from "react-router-dom";
+import { getCurrentUser, getReviewers } from "../utils/apiService";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 const Changed = () => {
@@ -24,6 +25,8 @@ const Changed = () => {
   const [upToDateMessage, setUpToDateMessage] = useState(false);
   const [showCommentForm, setShowCommentForm] = useState(false);
   const [showDiffSection, setShowDiffSection] = useState(false);
+  const [isEligibleReviewer, setIsEligibleReviewer] = useState(false);
+  const [reviewerCheckLoading, setReviewerCheckLoading] = useState(true);
   const navigate = useNavigate();
 
   const isEmpty = (str) => {
@@ -145,13 +148,68 @@ const Changed = () => {
     fetchData();
   }, [emptyCounts, navigate]);
 
-  if (loading) {
+  // Check if user is an eligible reviewer
+  useEffect(() => {
+    const checkReviewerStatus = async () => {
+      try {
+        setReviewerCheckLoading(true);
+        
+        let userInfo = null;
+        try {
+          userInfo = await getCurrentUser();
+        } catch (error) {
+          console.warn("Could not get user info:", error);
+        }
+
+        let reviewers = [];
+        try {
+          reviewers = await getReviewers();
+        } catch (error) {
+          console.warn("Could not get reviewers:", error);
+        }
+
+        if (userInfo && reviewers.includes(userInfo.login)) {
+          setIsEligibleReviewer(true);
+        } else {
+          setIsEligibleReviewer(false);
+        }
+      } catch (error) {
+        console.warn("Error checking reviewer status:", error);
+        setIsEligibleReviewer(false);
+      } finally {
+        setReviewerCheckLoading(false);
+      }
+    };
+
+    if (sessionStorage.getItem("github_token")) {
+      checkReviewerStatus();
+    } else {
+      setReviewerCheckLoading(false);
+    }
+  }, []);
+
+  if (loading || reviewerCheckLoading) {
     return (
       <div
         className="d-flex justify-content-center align-items-center"
         style={{ minHeight: "85vh" }}
       >
         <Spinner animation="border" />
+      </div>
+    );
+  }
+
+  // Check if user is an eligible reviewer
+  if (!isEligibleReviewer) {
+    return (
+      <div className="d-flex justify-content-center align-items-center min-vh-100">
+        <Alert variant="warning">
+          <Alert.Heading>Access Restricted</Alert.Heading>
+          <p>
+            Only eligible reviewers can access the Changed page since it contains merge functionality.
+            Please contact an administrator if you believe you should have reviewer access.
+          </p>
+        </Alert>
       </div>
     );
   }
