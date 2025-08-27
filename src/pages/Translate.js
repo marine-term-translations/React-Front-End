@@ -186,9 +186,8 @@ const Translate = () => {
           }
 
           // Get PR comments for approval details
-          let comments = [];
           try {
-            comments = await getPRComments(pullNumber);
+            await getPRComments(pullNumber);
           } catch (error) {
             console.warn("Could not get PR comments:", error);
           }
