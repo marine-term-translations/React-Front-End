@@ -154,3 +154,12 @@ export const approveFile = async (prNumber, filePath, sha, lang, labelName) => {
   );
   return response.data;
 };
+
+// Get all comments for a PR
+export const getPRComments = async (prNumber) => {
+  const response = await axios.get(`${API_BASE_URL}/api/github/pr/comments`, {
+    params: { repo: REPO, prNumber: prNumber },
+    headers: { Authorization: sessionStorage.getItem("github_token") },
+  });
+  return response.data;
+};

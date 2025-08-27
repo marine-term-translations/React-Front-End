@@ -25,6 +25,7 @@ import {
   getCurrentUser,
   fetchCommits,
   getReviewers,
+  getPRComments,
 } from "../utils/apiService";
 
 import {
@@ -51,6 +52,7 @@ const Translate = () => {
   const [commits, setCommits] = useState([]);
   const [showLabelReviewModal, setShowLabelReviewModal] = useState(false);
   const [selectedFileForReview, setSelectedFileForReview] = useState(null);
+  const [approvalDetails, setApprovalDetails] = useState({});
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -181,6 +183,14 @@ const Translate = () => {
             console.warn("Could not get current user info:", error);
           }
 
+          // Get PR comments for approval details
+          let comments = [];
+          try {
+            comments = await getPRComments(pullNumber);
+          } catch (error) {
+            console.warn("Could not get PR comments:", error);
+          }
+
           const approvalStatusPromises = filteredContents.map(async (file) => {
             try {
               const approvalStatus = await checkFileApprovalStatus(
@@ -211,6 +221,7 @@ const Translate = () => {
           try {
             const approvalStatuses = await Promise.all(approvalStatusPromises);
             const statusMap = {};
+            const approvalDetailsMap = {};
             let reviewers = [];
 
             try {
@@ -221,9 +232,30 @@ const Translate = () => {
 
             approvalStatuses.forEach((status) => {
               statusMap[status.filename] = status;
+              
+              // Process approval details from comments
+              const fileApprovalDetails = {};
+              status.approvedLabels?.forEach((labelName) => {
+                // Find comments for this label approval
+                const approvalComment = comments.find(comment => 
+                  comment.path === status.filename && 
+                  comment.body.trim().toLowerCase() === `approved-${labelName}`.toLowerCase()
+                );
+                
+                if (approvalComment) {
+                  fileApprovalDetails[labelName] = {
+                    approver: approvalComment.user.login,
+                    approvedAt: approvalComment.created_at,
+                    commentUrl: approvalComment.html_url
+                  };
+                }
+              });
+              
+              approvalDetailsMap[status.filename] = fileApprovalDetails;
             });
 
             setFileApprovalStatus(statusMap);
+            setApprovalDetails(approvalDetailsMap);
 
             // Check if current user is eligible reviewer
             if (userInfo && reviewers.includes(userInfo.login)) {
@@ -434,6 +466,32 @@ const Translate = () => {
 
       // Update approval status for the specific file
       const updatedStatus = await checkFileApprovalStatus(prNumber, filename);
+      
+      // Get updated PR comments to refresh approval details
+      const updatedComments = await getPRComments(prNumber);
+      
+      // Update approval details
+      const fileApprovalDetails = {};
+      updatedStatus.approvedLabels?.forEach((labelName) => {
+        const approvalComment = updatedComments.find(comment => 
+          comment.path === filename && 
+          comment.body.trim().toLowerCase() === `approved-${labelName}`.toLowerCase()
+        );
+        
+        if (approvalComment) {
+          fileApprovalDetails[labelName] = {
+            approver: approvalComment.user.login,
+            approvedAt: approvalComment.created_at,
+            commentUrl: approvalComment.html_url
+          };
+        }
+      });
+      
+      setApprovalDetails((prev) => ({
+        ...prev,
+        [filename]: fileApprovalDetails,
+      }));
+      
       setFileApprovalStatus((prev) => ({
         ...prev,
         [filename]: {
@@ -590,6 +648,7 @@ const Translate = () => {
                       <div className="mt-2">
                         {contents.map((file) => {
                           const status = fileApprovalStatus[file.filename];
+                          const fileApprovalInfo = approvalDetails[file.filename] || {};
                           const approvedCount = status?.approvedLabels?.length || 0;
                           const unapprovedCount = status?.unapprovedLabels?.length || 0;
                           const totalLabels = approvedCount + unapprovedCount;
@@ -637,9 +696,21 @@ const Translate = () => {
                                   {status?.approvedLabels?.length > 0 && (
                                     <div className="mb-1">
                                       <small className="text-success fw-bold">Approved: </small>
-                                      <small className="text-muted">
-                                        {status.approvedLabels.join(", ")}
-                                      </small>
+                                      <div className="ms-2">
+                                        {status.approvedLabels.map((labelName) => {
+                                          const approvalInfo = fileApprovalInfo[labelName];
+                                          return (
+                                            <div key={labelName} className="mb-1">
+                                              <span className="small text-muted">{labelName}</span>
+                                              {approvalInfo && (
+                                                <span className="small text-muted ms-2">
+                                                  (by {approvalInfo.approver} on {new Date(approvalInfo.approvedAt).toLocaleDateString()})
+                                                </span>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
                                     </div>
                                   )}
                                   {status?.unapprovedLabels?.length > 0 && (
@@ -1105,6 +1176,7 @@ const Translate = () => {
           <Modal.Body>
             {(() => {
               const fileStatus = fileApprovalStatus[selectedFileForReview];
+              const fileApprovalInfo = approvalDetails[selectedFileForReview] || {};
               const fileData = transformedData.find(
                 (data) => data.filename === selectedFileForReview
               );
@@ -1113,6 +1185,21 @@ const Translate = () => {
                 return <div>No data found for this file.</div>;
               }
 
+              // Filter out unapproved labels that have empty/undefined values to avoid confusion
+              const filteredUnapprovedLabels = fileStatus?.unapprovedLabels?.filter(labelName => {
+                const labelData = fileData.label[0][labelName];
+                if (!labelData) return false;
+                
+                // Check if any language has a non-empty value
+                const translations = Object.entries(labelData).filter(
+                  ([key]) => key !== "original" && key !== "status"
+                );
+                
+                return translations.some(([lang, translation]) => 
+                  translation && translation.trim() !== "" && translation !== "to be filled in"
+                );
+              }) || [];
+
               return (
                 <div>
                   <div className="mb-3">
@@ -1120,17 +1207,22 @@ const Translate = () => {
                     <span className="text-primary">{selectedFileForReview}</span>
                   </div>
                   
-                  {fileStatus?.unapprovedLabels?.length > 0 && (
+                  {filteredUnapprovedLabels.length > 0 && (
                     <div className="mb-4">
                       <h6 className="text-warning">🔍 Labels Pending Review:</h6>
                       <div className="list-group">
-                        {fileStatus.unapprovedLabels.map((labelName) => {
+                        {filteredUnapprovedLabels.map((labelName) => {
                           const labelData = fileData.label[0][labelName];
                           if (!labelData) return null;
 
-                          // Get all language translations for this label
+                          // Get all language translations for this label (excluding empty ones)
                           const translations = Object.entries(labelData).filter(
-                            ([key]) => key !== "original" && key !== "status"
+                            ([key, value]) => 
+                              key !== "original" && 
+                              key !== "status" && 
+                              value && 
+                              value.trim() !== "" && 
+                              value !== "to be filled in"
                           );
 
                           return (
@@ -1145,7 +1237,7 @@ const Translate = () => {
                                     {translations.map(([lang, translation]) => (
                                       <div key={lang} className="col-md-6 mb-2">
                                         <small>
-                                          <strong>{lang}:</strong> {translation || "(empty)"}
+                                          <strong>{lang}:</strong> {translation}
                                         </small>
                                       </div>
                                     ))}
@@ -1178,14 +1270,29 @@ const Translate = () => {
                     <div className="mb-3">
                       <h6 className="text-success">✅ Approved Labels:</h6>
                       <div className="list-group">
-                        {fileStatus.approvedLabels.map((labelName) => (
-                          <div key={labelName} className="list-group-item list-group-item-success">
-                            <div className="d-flex align-items-center">
-                              <span className="badge bg-success me-2">✓</span>
-                              <span>{labelName}</span>
+                        {fileStatus.approvedLabels.map((labelName) => {
+                          const approvalInfo = fileApprovalInfo[labelName];
+                          return (
+                            <div key={labelName} className="list-group-item list-group-item-success">
+                              <div className="d-flex align-items-center justify-content-between">
+                                <div className="d-flex align-items-center">
+                                  <span className="badge bg-success me-2">✓</span>
+                                  <span className="fw-bold">{labelName}</span>
+                                </div>
+                                {approvalInfo && (
+                                  <div className="text-end">
+                                    <div className="small text-muted">
+                                      <strong>Approved by:</strong> {approvalInfo.approver}
+                                    </div>
+                                    <div className="small text-muted">
+                                      <strong>Date:</strong> {new Date(approvalInfo.approvedAt).toLocaleDateString()} at {new Date(approvalInfo.approvedAt).toLocaleTimeString()}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
                             </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     </div>
                   )}
