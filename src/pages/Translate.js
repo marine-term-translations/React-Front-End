@@ -963,6 +963,18 @@ const Translate = () => {
                     </Alert>
                   </div>
                 )}
+                {prNumber && isEligibleReviewer && !reviewerMode && (
+                  <Alert variant="warning" className="mt-3">
+                    <strong>Some files need reviewing.</strong> Enter Reviewer
+                    Mode to review and approve translations.
+                  </Alert>
+                )}
+                {reviewerMode && (
+                  <Alert variant="info" className="mt-3">
+                    <strong>Reviewer Mode:</strong> Please review and approve
+                    the pending changes.
+                  </Alert>
+                )}
               </Alert>
             );
           }
@@ -1404,18 +1416,18 @@ const Translate = () => {
                                   {translations.map(([lang]) => (
                                     <Button
                                       key={lang}
-                                      id={`approve-${lang}-${labelName}`}
+                                      id={`approve-${lang}-${labelName}-${selectedFileForReview}`}
                                       variant="outline-primary"
                                       size="sm"
                                       className="me-1 mb-1"
                                       disabled={
                                         disabledButtons[
-                                          `approve-${lang}-${labelName}`
+                                          `approve-${lang}-${labelName}-${selectedFileForReview}`
                                         ]
                                       }
                                       onClick={() => {
                                         handleClickId(
-                                          `approve-${lang}-${labelName}`
+                                          `approve-${lang}-${labelName}-${selectedFileForReview}`
                                         );
                                         handleFileApproval(
                                           selectedFileForReview,
