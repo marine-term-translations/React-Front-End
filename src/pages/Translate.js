@@ -55,6 +55,8 @@ const Translate = () => {
   const [showLabelReviewModal, setShowLabelReviewModal] = useState(false);
   const [selectedFileForReview, setSelectedFileForReview] = useState(null);
   const [approvalDetails, setApprovalDetails] = useState({});
+  const [isLoadingReviewer, setIsLoadingReviewer] = useState(false);
+  const [disabledButtons, setDisabledButtons] = useState({});
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -313,6 +315,13 @@ const Translate = () => {
           [key]: prev[filename]?.[labelName]?.[key] || term,
         },
       },
+    }));
+  };
+
+  const handleClickId = (id) => {
+    setDisabledButtons((prevState) => ({
+      ...prevState,
+      [id]: true,
     }));
   };
 
@@ -585,6 +594,9 @@ const Translate = () => {
               <div className="d-flex justify-content-between align-items-center">
                 <div>
                   <strong>Reviewer Mode</strong> - PR #{prNumber}
+                  {isLoadingReviewer && (
+                    <Spinner animation="border" size="sm" />
+                  )}
                 </div>
                 <div>
                   <Button
@@ -594,6 +606,7 @@ const Translate = () => {
                       if (!reviewerMode && !reviewerModeFirstClicked) {
                         // First time entering reviewer mode, check all file statuses
                         setReviewerModeFirstClicked(true);
+                        setIsLoadingReviewer(true);
                         const approvalStatusPromises = contents.map(
                           async (file) => {
                             try {
@@ -706,6 +719,7 @@ const Translate = () => {
                         }
                       }
                       setReviewerMode(!reviewerMode);
+                      setIsLoadingReviewer(false);
                     }}
                   >
                     {reviewerMode
@@ -983,7 +997,7 @@ const Translate = () => {
             // make empty store
             let store = createEmptyStore();
             await getLinkedDataNQuads(card.uri, store);
-            setCurrentCardIndex((prev) => prev + 1);
+            //setCurrentCardIndex((prev) => prev + 1);
           };
 
           return (
@@ -1095,16 +1109,14 @@ const Translate = () => {
                           <Button
                             variant="success"
                             onClick={async () => {
-                              if (!isEditing) {
-                                goToNextCard();
-                              } else {
+                              if (isEditing) {
                                 await update(
                                   card.filename,
                                   card.labelName,
                                   card.lang
                                 );
-                                goToNextCard();
                               }
+                              goToNextCard();
                             }}
                             disabled={
                               isEditing &&
@@ -1392,10 +1404,19 @@ const Translate = () => {
                                   {translations.map(([lang]) => (
                                     <Button
                                       key={lang}
+                                      id={`approve-${lang}-${labelName}`}
                                       variant="outline-primary"
                                       size="sm"
                                       className="me-1 mb-1"
+                                      disabled={
+                                        disabledButtons[
+                                          `approve-${lang}-${labelName}`
+                                        ]
+                                      }
                                       onClick={() => {
+                                        handleClickId(
+                                          `approve-${lang}-${labelName}`
+                                        );
                                         handleFileApproval(
                                           selectedFileForReview,
                                           lang,
