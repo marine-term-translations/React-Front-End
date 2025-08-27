@@ -410,20 +410,33 @@ const Translate = () => {
 
       // Update approval details
       const fileApprovalDetails = {};
-      updatedStatus.approvedLabels?.forEach((labelName) => {
-        const approvalComment = updatedComments.find(
-          (comment) =>
-            comment.path === filename &&
-            comment.body.trim().toLowerCase() ===
-              `approved-${labelName}`.toLowerCase()
-        );
-
-        if (approvalComment) {
+      updatedStatus.approvedLabels?.forEach((approvedItem) => {
+        // Handle both legacy string format and new object format
+        const labelName = typeof approvedItem === 'string' ? approvedItem : approvedItem.label;
+        
+        if (typeof approvedItem === 'object' && approvedItem.reviewer) {
+          // Use the data from the new API response structure
           fileApprovalDetails[labelName] = {
-            approver: approvalComment.user.login,
-            approvedAt: approvalComment.created_at,
-            commentUrl: approvalComment.html_url,
+            approver: approvedItem.reviewer,
+            approvedAt: approvedItem.timestamp,
+            commentUrl: approvedItem.comment_url,
           };
+        } else {
+          // Fallback to finding the comment manually (for legacy support)
+          const approvalComment = updatedComments.find(
+            (comment) =>
+              comment.path === filename &&
+              comment.body.trim().toLowerCase() ===
+                `approved-${labelName}`.toLowerCase()
+          );
+
+          if (approvalComment) {
+            fileApprovalDetails[labelName] = {
+              approver: approvalComment.user.login,
+              approvedAt: approvalComment.created_at,
+              commentUrl: approvalComment.html_url,
+            };
+          }
         }
       });
 
@@ -436,8 +449,12 @@ const Translate = () => {
         ...prev,
         [filename]: {
           approved: updatedStatus.approved,
-          approvedLabels: updatedStatus.approvedLabels || [],
-          unapprovedLabels: updatedStatus.unapprovedLabels || [],
+          approvedLabels: (updatedStatus.approvedLabels || []).map(
+            item => typeof item === 'string' ? item : item.label
+          ),
+          unapprovedLabels: (updatedStatus.unapprovedLabels || []).map(
+            item => typeof item === 'string' ? item : item.label
+          ),
         },
       }));
 
@@ -588,9 +605,15 @@ const Translate = () => {
                                 filename: file.filename,
                                 approved: approvalStatus.approved,
                                 approvedLabels:
-                                  approvalStatus.approvedLabels || [],
+                                  (approvalStatus.approvedLabels || []).map(
+                                    item => typeof item === 'string' ? item : item.label
+                                  ),
                                 unapprovedLabels:
-                                  approvalStatus.unapprovedLabels || [],
+                                  (approvalStatus.unapprovedLabels || []).map(
+                                    item => typeof item === 'string' ? item : item.label
+                                  ),
+                                // Store raw approval data for processing approval details
+                                rawApprovedLabels: approvalStatus.approvedLabels || [],
                               };
                             } catch (error) {
                               console.warn(
@@ -602,6 +625,7 @@ const Translate = () => {
                                 approved: false,
                                 approvedLabels: [],
                                 unapprovedLabels: [],
+                                rawApprovedLabels: [],
                               };
                             }
                           }
@@ -625,20 +649,34 @@ const Translate = () => {
                             statusMap[status.filename] = status;
 
                             const fileApprovalDetails = {};
-                            status.approvedLabels?.forEach((labelName) => {
-                              const approvalComment = comments.find(
-                                (comment) =>
-                                  comment.path === status.filename &&
-                                  comment.body.trim().toLowerCase() ===
-                                    `approved-${labelName}`.toLowerCase()
-                              );
-
-                              if (approvalComment) {
+                            // Use raw approval data to access metadata
+                            status.rawApprovedLabels?.forEach((approvedItem) => {
+                              // Handle both legacy string format and new object format
+                              const labelName = typeof approvedItem === 'string' ? approvedItem : approvedItem.label;
+                              
+                              if (typeof approvedItem === 'object' && approvedItem.reviewer) {
+                                // Use the data from the new API response structure
                                 fileApprovalDetails[labelName] = {
-                                  approver: approvalComment.user.login,
-                                  approvedAt: approvalComment.created_at,
-                                  commentUrl: approvalComment.html_url,
+                                  approver: approvedItem.reviewer,
+                                  approvedAt: approvedItem.timestamp,
+                                  commentUrl: approvedItem.comment_url,
                                 };
+                              } else {
+                                // Fallback to finding the comment manually (for legacy support)
+                                const approvalComment = comments.find(
+                                  (comment) =>
+                                    comment.path === status.filename &&
+                                    comment.body.trim().toLowerCase() ===
+                                      `approved-${labelName}`.toLowerCase()
+                                );
+
+                                if (approvalComment) {
+                                  fileApprovalDetails[labelName] = {
+                                    approver: approvalComment.user.login,
+                                    approvedAt: approvalComment.created_at,
+                                    commentUrl: approvalComment.html_url,
+                                  };
+                                }
                               }
                             });
 
