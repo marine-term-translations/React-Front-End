@@ -526,7 +526,8 @@ const Translate = () => {
       .filter((card) => {
         const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
         return !passed.includes(key);
-      });
+      })
+      .filter((card) => isCardAvailableForNonReviewer(card));
 
     // Find the first card for the requested filename
     const targetCardIndex = filteredCards.findIndex(
@@ -539,6 +540,21 @@ const Translate = () => {
 
   const isEmpty = (str) => {
     return !str || !/[a-zA-Z0-9]/.test(str);
+  };
+
+  // Helper function to check if a card should be shown to non-reviewers
+  const isCardAvailableForNonReviewer = (card) => {
+    // If in reviewer mode, show all cards
+    if (reviewerMode) {
+      return true;
+    }
+    
+    // Check if this specific label is approved
+    const fileApprovalInfo = fileApprovalStatus[card.filename];
+    const isLabelApproved = fileApprovalInfo?.approvedLabels?.includes(card.labelName);
+    
+    // For non-reviewers, only show cards that are NOT approved
+    return !isLabelApproved;
   };
 
   const calculateModifiedCounts = () => {
@@ -930,7 +946,14 @@ const Translate = () => {
             .filter((card) => {
               const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
               return !passed.includes(key);
-            });
+            })
+            .filter((card) => isCardAvailableForNonReviewer(card));
+          
+          // Ensure currentCardIndex points to a valid card for non-reviewers
+          if (!reviewerMode && filteredCards.length > 0 && currentCardIndex >= filteredCards.length) {
+            setCurrentCardIndex(0);
+          }
+          
           const card = filteredCards[currentCardIndex];
           const fileApprovalInfo = fileApprovalStatus[card?.filename];
 
