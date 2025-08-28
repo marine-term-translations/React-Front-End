@@ -4,7 +4,7 @@ import axios from "axios";
 import DiffViewer from "react-diff-viewer-continued";
 import { formatInTimeZone } from "date-fns-tz";
 import { useNavigate } from "react-router-dom";
-import { getCurrentUser, getReviewers } from "../utils/apiService";
+import { getCurrentUser, getReviewers, checkFileApprovalStatus } from "../utils/apiService";
 import "bootstrap/dist/css/bootstrap.min.css";
 
 const Changed = () => {
@@ -27,11 +27,57 @@ const Changed = () => {
   const [showDiffSection, setShowDiffSection] = useState(false);
   const [isEligibleReviewer, setIsEligibleReviewer] = useState(false);
   const [reviewerCheckLoading, setReviewerCheckLoading] = useState(true);
+  const [prNumber, setPrNumber] = useState(null);
+  const [allValuesApproved, setAllValuesApproved] = useState(false);
   const navigate = useNavigate();
 
   const isEmpty = (str) => {
     return !str || !/[a-zA-Z0-9]/.test(str) || str === "to be filled in";
   };
+
+  // Check approval status for all files
+  const checkAllApprovalsStatus = useCallback(async (pullNumber) => {
+    if (!pullNumber) return;
+
+    try {
+      // Get all unique filenames from diffs
+      const filenames = [...new Set(diffs.map(diff => diff.filename))];
+      
+      const approvalStatusPromises = filenames.map(async (filename) => {
+        try {
+          const approvalStatus = await checkFileApprovalStatus(pullNumber, filename);
+          return {
+            filename: filename,
+            approved: approvalStatus.approved,
+            approvedLabels: (approvalStatus.approvedLabels || []).map((item) =>
+              typeof item === "string" ? item : item.label
+            ),
+            unapprovedLabels: (approvalStatus.unapprovedLabels || []).map((item) =>
+              typeof item === "string" ? item : item.label
+            ),
+          };
+        } catch (error) {
+          console.warn(`Could not check approval status for ${filename}:`, error);
+          return {
+            filename: filename,
+            approved: false,
+            approvedLabels: [],
+            unapprovedLabels: [],
+          };
+        }
+      });
+
+      const approvalStatuses = await Promise.all(approvalStatusPromises);
+      
+      // Check if all files are fully approved
+      const allApproved = approvalStatuses.every((status) => status.approved);
+      setAllValuesApproved(allApproved);
+
+    } catch (error) {
+      console.warn("Error checking approval statuses:", error);
+      setAllValuesApproved(false);
+    }
+  }, [diffs]);
 
   const emptyCounts = useCallback(async () => {
     const responseDiff = await axios.get(
@@ -125,7 +171,12 @@ const Changed = () => {
           setUpToDate(true);
           setUpToDateMessage(response.data.message);
         }
-        const { diffsData, commentsData } = response.data;
+        const { diffsData, commentsData, pullNumber } = response.data;
+
+        // Set PR number for approval checking
+        if (pullNumber) {
+          setPrNumber(pullNumber);
+        }
 
         emptyCounts();
 
@@ -147,6 +198,13 @@ const Changed = () => {
 
     fetchData();
   }, [emptyCounts, navigate]);
+
+  // Check approval status when PR number and diffs are available
+  useEffect(() => {
+    if (prNumber && diffs.length > 0) {
+      checkAllApprovalsStatus(prNumber);
+    }
+  }, [prNumber, diffs, checkAllApprovalsStatus]);
 
   // Check if user is an eligible reviewer
   useEffect(() => {
@@ -372,6 +430,11 @@ const Changed = () => {
     }
 
     emptyCounts();
+    
+    // Refresh approval status after overwrite operations
+    if (prNumber) {
+      await checkAllApprovalsStatus(prNumber);
+    }
   };
 
   const selectAllColumn = (action) => {
@@ -434,6 +497,12 @@ const Changed = () => {
       }
     );
     setConflicts(responseConflicts.data);
+    
+    // Refresh approval status after resolving conflicts
+    if (prNumber) {
+      await checkAllApprovalsStatus(prNumber);
+    }
+    
     setModalShow(false);
   };
 
@@ -557,14 +626,47 @@ const Changed = () => {
       ) : (
         <>
           <h3>No Conflict</h3>
-          <Button
-            variant="primary"
-            onClick={() => merge()}
-            disabled={Object.keys(emptyField).length !== 0}
-            className="w-100"
-          >
-            Merge
-          </Button>
+          {Object.keys(emptyField).length === 0 && allValuesApproved ? (
+            <Button
+              variant="primary"
+              onClick={() => merge()}
+              className="w-100"
+            >
+              Merge
+            </Button>
+          ) : (
+            <div>
+              <Button
+                variant="primary"
+                disabled
+                className="w-100 mb-3"
+              >
+                Merge (Disabled)
+              </Button>
+              <Alert variant="warning">
+                <Alert.Heading>Merge Requirements Not Met</Alert.Heading>
+                <p>Before merging, please ensure:</p>
+                <ul>
+                  {Object.keys(emptyField).length > 0 && (
+                    <li>All empty fields are filled in</li>
+                  )}
+                  {!allValuesApproved && (
+                    <li>All values have been approved by reviewers</li>
+                  )}
+                </ul>
+                <p>
+                  Please go to the{" "}
+                  <a 
+                    href={`/translate?branch=${sessionStorage.getItem("branch")}`}
+                    style={{ textDecoration: "underline", color: "#0d6efd" }}
+                  >
+                    Translate page
+                  </a>{" "}
+                  to complete missing approvals and fill in empty fields.
+                </p>
+              </Alert>
+            </div>
+          )}
         </>
       )}
 
@@ -584,7 +686,7 @@ const Changed = () => {
           <Button
             variant="primary"
             onClick={() => merge()}
-            disabled={!(Object.keys(emptyField).length === 0 && readyToMerge)}
+            disabled={!(Object.keys(emptyField).length === 0 && readyToMerge && allValuesApproved)}
           >
             Merge
           </Button>
