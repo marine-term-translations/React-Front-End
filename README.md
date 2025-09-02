@@ -1,3 +1,5 @@
+# Marine term translations Front-end
+
 ![CodeRabbit Pull Request Reviews](https://img.shields.io/coderabbit/prs/github/marine-term-translations/React-Front-End?utm_source=oss&utm_medium=github&utm_campaign=marine-term-translations%2FReact-Front-End&labelColor=171717&color=FF570A&link=https%3A%2F%2Fcoderabbit.ai&label=CodeRabbit+Reviews)
 ```mermaid
 sequenceDiagram
@@ -31,3 +33,4 @@ sequenceDiagram
         App->>User: Note: PR submission is a TODO and requires reviewer access
     end
 ```
+
