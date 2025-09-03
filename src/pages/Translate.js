@@ -57,6 +57,7 @@ const Translate = () => {
   const [approvalDetails, setApprovalDetails] = useState({});
   const [isLoadingReviewer, setIsLoadingReviewer] = useState(false);
   const [disabledButtons, setDisabledButtons] = useState({});
+  const [suggestionErrors, setSuggestionErrors] = useState({});
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -1131,6 +1132,11 @@ const Translate = () => {
                               />
                             )}
                           </Form.Group>
+                          {suggestionErrors[`${card.filename}-${card.labelName}-${card.lang}`] && (
+                            <Alert variant="warning" className="mt-2">
+                              Suggestions are not working at the moment. Please fill in the translations manually.
+                            </Alert>
+                          )}
                         </Card.Text>
                       </Col>
                       <Col
@@ -1212,8 +1218,17 @@ const Translate = () => {
                                     [`${card.filename}-${card.labelName}-${card.lang}`]:
                                       "suggestion-done",
                                   }));
+                                  // Clear any previous suggestion errors for this card
+                                  setSuggestionErrors((prev) => ({
+                                    ...prev,
+                                    [`${card.filename}-${card.labelName}-${card.lang}`]: false,
+                                  }));
                                 } catch (error) {
                                   setEditableTerm((prev) => ({
+                                    ...prev,
+                                    [`${card.filename}-${card.labelName}-${card.lang}`]: true,
+                                  }));
+                                  setSuggestionErrors((prev) => ({
                                     ...prev,
                                     [`${card.filename}-${card.labelName}-${card.lang}`]: true,
                                   }));
@@ -1226,7 +1241,8 @@ const Translate = () => {
                             }}
                             disabled={
                               isEditing === "suggestion-in-progress" ||
-                              isEditing === "suggestion-done"
+                              isEditing === "suggestion-done" ||
+                              suggestionErrors[`${card.filename}-${card.labelName}-${card.lang}`]
                             }
                             style={{
                               marginBottom: "8px",
