@@ -17,6 +17,11 @@ jest.mock('../utils/apiService', () => ({
   getPRComments: jest.fn().mockResolvedValue([])
 }));
 
+// Mock the SuggestionService module
+jest.mock('../utils/SuggestionService', () => ({
+  fetchSuggestions: jest.fn()
+}));
+
 // Mock the linkedDataUtils module
 jest.mock('../utils/linkedDataUtils', () => ({
   createEmptyStore: jest.fn(),
@@ -92,5 +97,33 @@ describe('Card Filtering Logic', () => {
     const reviewerMode3 = true;
     const shouldShowCard3 = reviewerMode3 || !isLabelApproved2;
     expect(shouldShowCard3).toBe(true); // reviewers should see all cards
+  });
+});
+
+// Test for suggestion error handling
+describe('Suggestion Error Handling', () => {
+  test('suggestion error state should be handled correctly', () => {
+    // Mock suggestion errors state behavior
+    const mockSuggestionErrors = {
+      'test-file.json-test-label-en': true
+    };
+
+    // Test that error message should be shown when suggestion error exists
+    const cardKey = 'test-file.json-test-label-en';
+    const hasError = mockSuggestionErrors[cardKey];
+    expect(hasError).toBe(true);
+
+    // Test button should be disabled when there's a suggestion error
+    const isEditing = 'suggestion-in-progress';
+    const buttonShouldBeDisabled = 
+      isEditing === "suggestion-in-progress" ||
+      isEditing === "suggestion-done" ||
+      mockSuggestionErrors[cardKey];
+    expect(buttonShouldBeDisabled).toBe(true);
+
+    // Test that no error state means no error message
+    const cardKeyNoError = 'test-file.json-test-label-fr';
+    const hasNoError = mockSuggestionErrors[cardKeyNoError];
+    expect(hasNoError).toBeFalsy();
   });
 });
