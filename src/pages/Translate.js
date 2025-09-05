@@ -58,6 +58,8 @@ const Translate = () => {
   const [isLoadingReviewer, setIsLoadingReviewer] = useState(false);
   const [disabledButtons, setDisabledButtons] = useState({});
   const [suggestionErrors, setSuggestionErrors] = useState({});
+  const [cardHistory, setCardHistory] = useState([]);
+  const [showHistoryModal, setShowHistoryModal] = useState(false);
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -73,6 +75,16 @@ const Translate = () => {
       window.removeEventListener("beforeunload", handleBeforeUnload);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load history from sessionStorage on component mount
+  useEffect(() => {
+    try {
+      const history = JSON.parse(sessionStorage.getItem("cardHistory") || "[]");
+      setCardHistory(history);
+    } catch {
+      setCardHistory([]);
+    }
   }, []);
 
   useEffect(() => {
@@ -543,6 +555,57 @@ const Translate = () => {
     return !str || !/[a-zA-Z0-9]/.test(str);
   };
 
+  // Helper function to add card to history
+  const addToHistory = (card, action) => {
+    const historyEntry = {
+      id: `${card.filename}_-_${card.labelName}_-_${card.lang}`,
+      filename: card.filename,
+      labelName: card.labelName,
+      lang: card.lang,
+      action: action,
+      timestamp: new Date().toISOString(),
+      original: card.labelData.original,
+    };
+
+    // Update session storage for history
+    let history = [];
+    try {
+      history = JSON.parse(sessionStorage.getItem("cardHistory") || "[]");
+    } catch {
+      history = [];
+    }
+
+    // Add to history if not already present or if action is different
+    const existingIndex = history.findIndex(item => item.id === historyEntry.id);
+    if (existingIndex === -1) {
+      history.push(historyEntry);
+    } else {
+      // Update existing entry with new action and timestamp
+      history[existingIndex] = { ...history[existingIndex], action, timestamp: historyEntry.timestamp };
+    }
+
+    sessionStorage.setItem("cardHistory", JSON.stringify(history));
+    setCardHistory(history);
+  };
+
+  // Helper function to get visited cards list
+  const getVisitedCards = () => {
+    try {
+      return JSON.parse(sessionStorage.getItem("visitedCards") || "[]");
+    } catch {
+      return [];
+    }
+  };
+
+  // Helper function to add card to visited list
+  const addToVisited = (cardKey) => {
+    const visited = getVisitedCards();
+    if (!visited.includes(cardKey)) {
+      visited.push(cardKey);
+      sessionStorage.setItem("visitedCards", JSON.stringify(visited));
+    }
+  };
+
   // Helper function to check if a card should be shown to non-reviewers
   const isCardAvailableForNonReviewer = (card) => {
     // If in reviewer mode, show all cards
@@ -556,6 +619,71 @@ const Translate = () => {
     
     // For non-reviewers, only show cards that are NOT approved
     return !isLabelApproved;
+  };
+
+  // Helper function to go to previous card
+  const goToPrevCard = () => {
+    if (currentCardIndex > 0) {
+      const newIndex = currentCardIndex - 1;
+      setCurrentCardIndex(newIndex);
+      
+      // Get the current cards list to find the previous card
+      const cards = getAllCards(transformedData);
+      const card = cards[newIndex];
+      if (card) {
+        const cardKey = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
+        addToVisited(cardKey);
+        addToHistory(card, "viewed_previous");
+      }
+    }
+  };
+
+  // Helper function to get all available cards (including visited ones for navigation)
+  const getAllCards = (data = transformedData) => {
+    const cards = [];
+    data.forEach((item) => {
+      Object.entries(item.label[0]).forEach(([labelName, labelData]) => {
+        Object.keys(labelData).forEach((lang) => {
+          if (lang === "original" || lang === "status") return;
+          cards.push({
+            filename: item.filename,
+            uri: item.uri,
+            labelName,
+            labelData,
+            lang,
+            status: labelData.status,
+          });
+        });
+      });
+    });
+
+    const statusOrder = {
+      Conflict: 0,
+      "No Modified": 1,
+      Modified: 2,
+      Empty: 3,
+    };
+    
+    cards.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
+    
+    // Filter by selected statuses and reviewer access
+    return cards
+      .filter((card) => selectedStatuses.includes(card.status))
+      .filter((card) => isCardAvailableForNonReviewer(card));
+  };
+
+  // Helper function to navigate to specific card by history item
+  const navigateToHistoryCard = (historyItem) => {
+    const cards = getAllCards(transformedData);
+    const cardIndex = cards.findIndex(card => 
+      `${card.filename}_-_${card.labelName}_-_${card.lang}` === historyItem.id
+    );
+    
+    if (cardIndex !== -1) {
+      setCurrentCardIndex(cardIndex);
+      addToHistory(cards[cardIndex], "viewed_from_history");
+      setShowHistoryModal(false);
+    }
   };
 
   const calculateModifiedCounts = () => {
@@ -928,12 +1056,13 @@ const Translate = () => {
             Empty: 3,
           };
           cards.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
-          let filteredCards = cards.filter((card) =>
-            selectedStatuses.includes(card.status)
-          );
+          
+          // For navigation purposes, we include all cards (including visited ones)
+          // but for displaying "new" cards, we still respect the passed cards filter
+          const allCards = cards
+            .filter((card) => selectedStatuses.includes(card.status))
+            .filter((card) => isCardAvailableForNonReviewer(card));
 
-          // Only show one card at a time
-          // Filter out cards that are already in sessionStorage "passedCards"
           let passed = [];
           try {
             passed = JSON.parse(sessionStorage.getItem("passedCards") || "[]");
@@ -942,21 +1071,59 @@ const Translate = () => {
           }
           console.log("passed", passed);
 
-          filteredCards = cards
-            .filter((card) => selectedStatuses.includes(card.status))
-            .filter((card) => {
-              const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
-              return !passed.includes(key);
-            })
-            .filter((card) => isCardAvailableForNonReviewer(card));
+          // For determining the "active" cards for auto-navigation, filter out passed ones
+          const unvisitedCards = allCards.filter((card) => {
+            const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
+            return !passed.includes(key);
+          });
           
-          // Ensure currentCardIndex points to a valid card for non-reviewers
-          if (!reviewerMode && filteredCards.length > 0 && currentCardIndex >= filteredCards.length) {
+          // Use allCards for navigation but default to showing unvisited ones
+          const filteredCards = allCards;
+          
+          // Ensure currentCardIndex points to a valid card
+          if (filteredCards.length > 0 && currentCardIndex >= filteredCards.length) {
             setCurrentCardIndex(0);
           }
           
-          const card = filteredCards[currentCardIndex];
+          // If we're in the middle of unvisited cards, try to show those first
+          // Otherwise, allow navigation through all cards
+          let displayCardIndex = currentCardIndex;
+          if (unvisitedCards.length > 0 && currentCardIndex < unvisitedCards.length) {
+            // Show unvisited cards when available
+            const currentCard = filteredCards[currentCardIndex];
+            const isCurrentCardUnvisited = unvisitedCards.some(card => 
+              card.filename === currentCard?.filename && 
+              card.labelName === currentCard?.labelName && 
+              card.lang === currentCard?.lang
+            );
+            if (!isCurrentCardUnvisited && unvisitedCards.length > 0) {
+              // Jump to first unvisited card if current is visited
+              const firstUnvisitedIndex = filteredCards.findIndex(card =>
+                unvisitedCards.some(unvisited => 
+                  unvisited.filename === card.filename && 
+                  unvisited.labelName === card.labelName && 
+                  unvisited.lang === card.lang
+                )
+              );
+              if (firstUnvisitedIndex !== -1) {
+                displayCardIndex = firstUnvisitedIndex;
+                setCurrentCardIndex(firstUnvisitedIndex);
+              }
+            }
+          }
+          
+          const card = filteredCards[displayCardIndex];
           const fileApprovalInfo = fileApprovalStatus[card?.filename];
+
+          // Track current card when displayed (only once per card per session)
+          if (card) {
+            const cardKey = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
+            const visitedCards = getVisitedCards();
+            if (!visitedCards.includes(cardKey)) {
+              addToVisited(cardKey);
+              addToHistory(card, "viewed");
+            }
+          }
 
           // Check if this specific label is approved
           const isLabelApproved = fileApprovalInfo?.approvedLabels?.includes(
@@ -1026,14 +1193,29 @@ const Translate = () => {
               passed.push(key);
               sessionStorage.setItem("passedCards", JSON.stringify(passed));
             }
+            
+            // Add to history and visited cards
+            addToVisited(key);
+            addToHistory(card, "confirmed");
+            
             setEditableTerm((prev) => ({
               ...prev,
               [key]: false,
             }));
+            
+            // Navigate to next available card
+            const nextIndex = currentCardIndex + 1;
+            if (nextIndex < filteredCards.length) {
+              setCurrentCardIndex(nextIndex);
+              const nextCard = filteredCards[nextIndex];
+              const nextKey = `${nextCard.filename}_-_${nextCard.labelName}_-_${nextCard.lang}`;
+              addToVisited(nextKey);
+              addToHistory(nextCard, "viewed");
+            }
+            
             // make empty store
             let store = createEmptyStore();
             await getLinkedDataNQuads(card.uri, store);
-            //setCurrentCardIndex((prev) => prev + 1);
           };
 
           return (
@@ -1310,6 +1492,31 @@ const Translate = () => {
                         </div>
                       </Col>
                     </Row>
+                    {/* Navigation buttons row */}
+                    <Row className="mb-3">
+                      <Col className="mt-2">
+                        <div className="d-flex justify-content-center gap-2">
+                          <Button
+                            variant="outline-primary"
+                            onClick={goToPrevCard}
+                            disabled={currentCardIndex === 0}
+                            style={{ width: "120px" }}
+                          >
+                            ← Previous
+                          </Button>
+                          <Button
+                            variant="outline-info"
+                            onClick={() => setShowHistoryModal(true)}
+                            style={{ width: "120px" }}
+                          >
+                            📋 History
+                          </Button>
+                          <div className="text-muted small align-self-center mx-2">
+                            Card {currentCardIndex + 1} of {filteredCards.length}
+                          </div>
+                        </div>
+                      </Col>
+                    </Row>
                   </Card.Body>
                 </Card>
               </Col>
@@ -1555,6 +1762,87 @@ const Translate = () => {
           </Modal.Footer>
         </Modal>
       )}
+
+      {/* History Modal */}
+      <Modal
+        show={showHistoryModal}
+        onHide={() => setShowHistoryModal(false)}
+        size="lg"
+        aria-labelledby="history-modal-title"
+      >
+        <Modal.Header closeButton>
+          <Modal.Title id="history-modal-title">Session History</Modal.Title>
+        </Modal.Header>
+        <Modal.Body>
+          {cardHistory.length === 0 ? (
+            <Alert variant="info">
+              No history available yet. Start working on cards to build your session history.
+            </Alert>
+          ) : (
+            <div>
+              <p className="text-muted mb-3">
+                Click on any item to navigate back to that card.
+              </p>
+              <div style={{ maxHeight: "400px", overflowY: "auto" }}>
+                {cardHistory
+                  .slice()
+                  .reverse()
+                  .map((item, index) => (
+                    <div
+                      key={`${item.id}-${index}`}
+                      className="card mb-2 cursor-pointer"
+                      style={{ cursor: "pointer" }}
+                      onClick={() => navigateToHistoryCard(item)}
+                    >
+                      <div className="card-body py-2 px-3">
+                        <div className="d-flex justify-content-between align-items-start">
+                          <div className="flex-grow-1">
+                            <h6 className="mb-1 text-primary">
+                              {item.labelName} ({item.lang})
+                            </h6>
+                            <p className="mb-1 small text-muted">
+                              <strong>File:</strong> {item.filename.split('/').pop()}
+                            </p>
+                            {item.original && (
+                              <p className="mb-1 small text-muted">
+                                <strong>Original:</strong> {item.original.length > 50 
+                                  ? item.original.substring(0, 50) + "..." 
+                                  : item.original}
+                              </p>
+                            )}
+                          </div>
+                          <div className="text-end">
+                            <span 
+                              className={`badge ${
+                                item.action === "confirmed" ? "bg-success" :
+                                item.action === "viewed_from_history" ? "bg-info" :
+                                item.action === "viewed_previous" ? "bg-warning" :
+                                "bg-secondary"
+                              }`}
+                            >
+                              {item.action === "confirmed" ? "✓ Confirmed" :
+                               item.action === "viewed_from_history" ? "📋 From History" :
+                               item.action === "viewed_previous" ? "← Previous" :
+                               "👁 Viewed"}
+                            </span>
+                            <div className="small text-muted mt-1">
+                              {new Date(item.timestamp).toLocaleString()}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+              </div>
+            </div>
+          )}
+        </Modal.Body>
+        <Modal.Footer>
+          <Button variant="secondary" onClick={() => setShowHistoryModal(false)}>
+            Close
+          </Button>
+        </Modal.Footer>
+      </Modal>
     </div>
   );
 };
