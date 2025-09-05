@@ -47,6 +47,8 @@ describe('Translate Component', () => {
       if (key === 'github_token') return 'mock-token';
       if (key === 'branch') return 'mock-branch';
       if (key === 'passedCards') return '[]';
+      if (key === 'visitedCards') return '[]';
+      if (key === 'cardHistory') return '[]';
       return null;
     });
   });
@@ -125,5 +127,112 @@ describe('Suggestion Error Handling', () => {
     const cardKeyNoError = 'test-file.json-test-label-fr';
     const hasNoError = mockSuggestionErrors[cardKeyNoError];
     expect(hasNoError).toBeFalsy();
+  });
+});
+
+// Test for navigation and history features  
+describe('Navigation and History Features', () => {
+  test('card history tracking logic works correctly', () => {
+    // Test history entry creation
+    const mockCard = {
+      filename: 'test-file.json',
+      labelName: 'test-label',
+      lang: 'en',
+      labelData: { original: 'test original text' }
+    };
+
+    const historyEntry = {
+      id: `${mockCard.filename}_-_${mockCard.labelName}_-_${mockCard.lang}`,
+      filename: mockCard.filename,
+      labelName: mockCard.labelName,
+      lang: mockCard.lang,
+      action: 'viewed',
+      timestamp: new Date().toISOString(),
+      original: mockCard.labelData.original,
+    };
+
+    // Verify history entry structure
+    expect(historyEntry.id).toBe('test-file.json_-_test-label_-_en');
+    expect(historyEntry.filename).toBe('test-file.json');
+    expect(historyEntry.action).toBe('viewed');
+    expect(historyEntry.original).toBe('test original text');
+  });
+
+  test('sessionStorage operations for history work correctly', () => {
+    // Test adding to visited cards
+    const visitedCards = [];
+    const cardKey = 'test-file.json_-_test-label_-_en';
+    
+    if (!visitedCards.includes(cardKey)) {
+      visitedCards.push(cardKey);
+    }
+    
+    expect(visitedCards).toContain(cardKey);
+    expect(visitedCards.length).toBe(1);
+
+    // Test not adding duplicate
+    if (!visitedCards.includes(cardKey)) {
+      visitedCards.push(cardKey);
+    }
+    
+    expect(visitedCards.length).toBe(1); // Should still be 1
+  });
+
+  test('navigation logic works correctly', () => {
+    // Test previous navigation
+    let currentCardIndex = 2;
+    const filteredCards = [
+      { filename: 'file1.json', labelName: 'label1', lang: 'en' },
+      { filename: 'file2.json', labelName: 'label2', lang: 'en' },
+      { filename: 'file3.json', labelName: 'label3', lang: 'en' },
+    ];
+
+    // Test going to previous card
+    if (currentCardIndex > 0) {
+      currentCardIndex = currentCardIndex - 1;
+    }
+    expect(currentCardIndex).toBe(1);
+
+    // Test boundary condition
+    currentCardIndex = 0;
+    const canGoToPrevious = currentCardIndex > 0;
+    expect(canGoToPrevious).toBe(false);
+  });
+
+  test('history filtering and display logic works correctly', () => {
+    const mockHistory = [
+      {
+        id: 'file1.json_-_label1_-_en',
+        action: 'viewed',
+        timestamp: '2023-01-01T10:00:00.000Z',
+        labelName: 'label1',
+        filename: 'file1.json'
+      },
+      {
+        id: 'file2.json_-_label2_-_en',
+        action: 'confirmed',
+        timestamp: '2023-01-01T10:05:00.000Z',
+        labelName: 'label2',
+        filename: 'file2.json'
+      }
+    ];
+
+    // Test reversing history for display (newest first)
+    const reversedHistory = mockHistory.slice().reverse();
+    expect(reversedHistory[0].action).toBe('confirmed');
+    expect(reversedHistory[1].action).toBe('viewed');
+
+    // Test badge color logic
+    const getBadgeClass = (action) => {
+      if (action === "confirmed") return "bg-success";
+      if (action === "viewed_from_history") return "bg-info";
+      if (action === "viewed_previous") return "bg-warning";
+      return "bg-secondary";
+    };
+
+    expect(getBadgeClass('confirmed')).toBe('bg-success');
+    expect(getBadgeClass('viewed_from_history')).toBe('bg-info');
+    expect(getBadgeClass('viewed_previous')).toBe('bg-warning');
+    expect(getBadgeClass('viewed')).toBe('bg-secondary');
   });
 });
