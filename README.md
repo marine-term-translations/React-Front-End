@@ -122,14 +122,14 @@ Comprehensive documentation is available in the `docs/` directory:
 
 | Document | Description |
 |----------|-------------|
-| **[📁 Project Structure](https://github.com/marine-term-translations/React-Front-End/docs/PROJECT_STRUCTURE.md)** | Complete overview of file organization and architecture |
-| **[🧩 Components](https://github.com/marine-term-translations/React-Front-End/docs/COMPONENTS.md)** | Detailed component documentation with props and examples |
-| **[⚙️ Setup Guide](https://github.com/marine-term-translations/React-Front-End/docs/SETUP.md)** | Development environment setup and workflow |
-| **[🔌 API Services](https://github.com/marine-term-translations/React-Front-End/docs/API.md)** | API service documentation and utilities |
-| **[🧭 Routing](https://github.com/marine-term-translations/React-Front-End/docs/ROUTING.md)** | Navigation and URL structure documentation |
-| **[📊 State Management](https://github.com/marine-term-translations/React-Front-End/docs/STATE_MANAGEMENT.md)** | State patterns and data flow |
-| **[🤝 Contributing](https://github.com/marine-term-translations/React-Front-End/docs/CONTRIBUTING.md)** | Guidelines for contributing to the project |
-| **[🏛️ Architecture](https://github.com/marine-term-translations/React-Front-End/docs/ARCHITECTURE.md)** | System architecture and design patterns |
+| **[📁 Project Structure](https://github.com/marine-term-translations/React-Front-End/blob/main/docs/PROJECT_STRUCTURE.md)** | Complete overview of file organization and architecture |
+| **[🧩 Components](https://github.com/marine-term-translations/React-Front-End/blob/main/docs/COMPONENTS.md)** | Detailed component documentation with props and examples |
+| **[⚙️ Setup Guide](https://github.com/marine-term-translations/React-Front-End/blob/main/docs/SETUP.md)** | Development environment setup and workflow |
+| **[🔌 API Services](https://github.com/marine-term-translations/React-Front-End/blob/main/docs/API.md)** | API service documentation and utilities |
+| **[🧭 Routing](https://github.com/marine-term-translations/React-Front-End/blob/main/docs/ROUTING.md)** | Navigation and URL structure documentation |
+| **[📊 State Management](https://github.com/marine-term-translations/React-Front-End/blob/main/docs/STATE_MANAGEMENT.md)** | State patterns and data flow |
+| **[🤝 Contributing](https://github.com/marine-term-translations/React-Front-End/blob/main/docs/CONTRIBUTING.md)** | Guidelines for contributing to the project |
+| **[🏛️ Architecture](https://github.com/marine-term-translations/React-Front-End/blob/main/docs/ARCHITECTURE.md)** | System architecture and design patterns |
 
 ## 🎯 Core Features
 
@@ -255,7 +255,7 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Issues**: [GitHub Issues](https://github.com/marine-term-translations/React-Front-End/issues)
 - **Discussions**: [GitHub Discussions](https://github.com/marine-term-translations/React-Front-End/discussions)
-- **Documentation**: [docs/](https://github.com/marine-term-translations/React-Front-End/docs/) directory
+- **Documentation**: [docs/](https://github.com/marine-term-translations/React-Front-End/blob/main/docs/) directory
 - **Examples**: See existing components and tests
 
 ## 🔗 Related Projects
@@ -267,5 +267,6 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 ---
 
 **Built with ❤️ for the marine science community**
+
 
 
