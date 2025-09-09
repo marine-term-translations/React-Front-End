@@ -657,6 +657,9 @@ const Translate = () => {
         const cardKey = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
         addToVisited(cardKey);
         addToHistory(card, "viewed_previous");
+        
+        // Fetch prelabel data for the previous card
+        fetchPreLabelData(card.uri);
       }
     }
   };
@@ -706,6 +709,9 @@ const Translate = () => {
       setCurrentCardIndex(cardIndex);
       addToHistory(cards[cardIndex], "viewed_from_history");
       setShowHistoryModal(false);
+      
+      // Fetch prelabel data for the selected card
+      fetchPreLabelData(cards[cardIndex].uri);
     }
   };
 
@@ -1237,21 +1243,9 @@ const Translate = () => {
               const nextKey = `${nextCard.filename}_-_${nextCard.labelName}_-_${nextCard.lang}`;
               addToVisited(nextKey);
               addToHistory(nextCard, "viewed");
-            }
-            
-            // Fetch linked data and extract prelabel
-            try {
-              let store = createEmptyStore();
-              await getLinkedDataNQuads(card.uri, store);
-              const prelabel = extractSkosPreLabel(store, card.uri);
-              if (prelabel) {
-                setPreLabels(prev => ({
-                  ...prev,
-                  [card.uri]: prelabel
-                }));
-              }
-            } catch (error) {
-              console.error("Error fetching prelabel data:", error);
+              
+              // Fetch prelabel data for the next card
+              fetchPreLabelData(nextCard.uri);
             }
           };
 
