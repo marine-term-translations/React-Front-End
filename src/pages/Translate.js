@@ -13,7 +13,7 @@ import {
   Toast,
 } from "react-bootstrap";
 import "bootstrap/dist/css/bootstrap.min.css";
-import { FaGithub } from "react-icons/fa";
+import { FaLink } from "react-icons/fa";
 import {
   sendUpdateRequest,
   fetchBranchDiff,
@@ -31,7 +31,7 @@ import {
 import {
   createEmptyStore,
   getLinkedDataNQuads,
-  extractSkosPreLabel,
+  extractSkosPrefLabel,
 } from "../utils/linkedDataUtils";
 
 const Translate = () => {
@@ -558,19 +558,19 @@ const Translate = () => {
   };
 
   // Helper function to fetch prelabel data for a card
-  const fetchPreLabelData = async (uri) => {
+  const fetchPrefLabel = async (uri) => {
     if (preLabels[uri]) {
       return; // Already fetched
     }
-    
+
     try {
       let store = createEmptyStore();
       await getLinkedDataNQuads(uri, store);
-      const prelabel = extractSkosPreLabel(store, uri);
+      const prelabel = extractSkosPrefLabel(store, uri);
       if (prelabel) {
-        setPreLabels(prev => ({
+        setPreLabels((prev) => ({
           ...prev,
-          [uri]: prelabel
+          [uri]: prelabel,
         }));
       }
     } catch (error) {
@@ -599,12 +599,18 @@ const Translate = () => {
     }
 
     // Add to history if not already present or if action is different
-    const existingIndex = history.findIndex(item => item.id === historyEntry.id);
+    const existingIndex = history.findIndex(
+      (item) => item.id === historyEntry.id
+    );
     if (existingIndex === -1) {
       history.push(historyEntry);
     } else {
       // Update existing entry with new action and timestamp
-      history[existingIndex] = { ...history[existingIndex], action, timestamp: historyEntry.timestamp };
+      history[existingIndex] = {
+        ...history[existingIndex],
+        action,
+        timestamp: historyEntry.timestamp,
+      };
     }
 
     sessionStorage.setItem("cardHistory", JSON.stringify(history));
@@ -635,11 +641,13 @@ const Translate = () => {
     if (reviewerMode) {
       return true;
     }
-    
+
     // Check if this specific label is approved
     const fileApprovalInfo = fileApprovalStatus[card.filename];
-    const isLabelApproved = fileApprovalInfo?.approvedLabels?.includes(card.labelName);
-    
+    const isLabelApproved = fileApprovalInfo?.approvedLabels?.includes(
+      card.labelName
+    );
+
     // For non-reviewers, only show cards that are NOT approved
     return !isLabelApproved;
   };
@@ -649,7 +657,7 @@ const Translate = () => {
     if (currentCardIndex > 0) {
       const newIndex = currentCardIndex - 1;
       setCurrentCardIndex(newIndex);
-      
+
       // Get the current cards list to find the previous card
       const cards = getAllCards(transformedData);
       const card = cards[newIndex];
@@ -657,9 +665,9 @@ const Translate = () => {
         const cardKey = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
         addToVisited(cardKey);
         addToHistory(card, "viewed_previous");
-        
+
         // Fetch prelabel data for the previous card
-        fetchPreLabelData(card.uri);
+        fetchPrefLabel(card.uri);
       }
     }
   };
@@ -689,9 +697,9 @@ const Translate = () => {
       Modified: 2,
       Empty: 3,
     };
-    
+
     cards.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
-    
+
     // Filter by selected statuses and reviewer access
     return cards
       .filter((card) => selectedStatuses.includes(card.status))
@@ -701,17 +709,18 @@ const Translate = () => {
   // Helper function to navigate to specific card by history item
   const navigateToHistoryCard = (historyItem) => {
     const cards = getAllCards(transformedData);
-    const cardIndex = cards.findIndex(card => 
-      `${card.filename}_-_${card.labelName}_-_${card.lang}` === historyItem.id
+    const cardIndex = cards.findIndex(
+      (card) =>
+        `${card.filename}_-_${card.labelName}_-_${card.lang}` === historyItem.id
     );
-    
+
     if (cardIndex !== -1) {
       setCurrentCardIndex(cardIndex);
       addToHistory(cards[cardIndex], "viewed_from_history");
       setShowHistoryModal(false);
-      
+
       // Fetch prelabel data for the selected card
-      fetchPreLabelData(cards[cardIndex].uri);
+      fetchPrefLabel(cards[cardIndex].uri);
     }
   };
 
@@ -1085,7 +1094,7 @@ const Translate = () => {
             Empty: 3,
           };
           cards.sort((a, b) => statusOrder[a.status] - statusOrder[b.status]);
-          
+
           // For navigation purposes, we include all cards (including visited ones)
           // but for displaying "new" cards, we still respect the passed cards filter
           const allCards = cards
@@ -1105,33 +1114,41 @@ const Translate = () => {
             const key = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
             return !passed.includes(key);
           });
-          
+
           // Use allCards for navigation but default to showing unvisited ones
           const filteredCards = allCards;
-          
+
           // Ensure currentCardIndex points to a valid card
-          if (filteredCards.length > 0 && currentCardIndex >= filteredCards.length) {
+          if (
+            filteredCards.length > 0 &&
+            currentCardIndex >= filteredCards.length
+          ) {
             setCurrentCardIndex(0);
           }
-          
+
           // If we're in the middle of unvisited cards, try to show those first
           // Otherwise, allow navigation through all cards
           let displayCardIndex = currentCardIndex;
-          if (unvisitedCards.length > 0 && currentCardIndex < unvisitedCards.length) {
+          if (
+            unvisitedCards.length > 0 &&
+            currentCardIndex < unvisitedCards.length
+          ) {
             // Show unvisited cards when available
             const currentCard = filteredCards[currentCardIndex];
-            const isCurrentCardUnvisited = unvisitedCards.some(card => 
-              card.filename === currentCard?.filename && 
-              card.labelName === currentCard?.labelName && 
-              card.lang === currentCard?.lang
+            const isCurrentCardUnvisited = unvisitedCards.some(
+              (card) =>
+                card.filename === currentCard?.filename &&
+                card.labelName === currentCard?.labelName &&
+                card.lang === currentCard?.lang
             );
             if (!isCurrentCardUnvisited && unvisitedCards.length > 0) {
               // Jump to first unvisited card if current is visited
-              const firstUnvisitedIndex = filteredCards.findIndex(card =>
-                unvisitedCards.some(unvisited => 
-                  unvisited.filename === card.filename && 
-                  unvisited.labelName === card.labelName && 
-                  unvisited.lang === card.lang
+              const firstUnvisitedIndex = filteredCards.findIndex((card) =>
+                unvisitedCards.some(
+                  (unvisited) =>
+                    unvisited.filename === card.filename &&
+                    unvisited.labelName === card.labelName &&
+                    unvisited.lang === card.lang
                 )
               );
               if (firstUnvisitedIndex !== -1) {
@@ -1140,21 +1157,21 @@ const Translate = () => {
               }
             }
           }
-          
+
           const card = filteredCards[displayCardIndex];
           const fileApprovalInfo = fileApprovalStatus[card?.filename];
 
           // Track current card when displayed (only once per card per session)
           if (card) {
+            // Fetch prelabel data for the current card
+            fetchPrefLabel(card.uri);
+
             const cardKey = `${card.filename}_-_${card.labelName}_-_${card.lang}`;
             const visitedCards = getVisitedCards();
             if (!visitedCards.includes(cardKey)) {
               addToVisited(cardKey);
               addToHistory(card, "viewed");
             }
-            
-            // Fetch prelabel data for the current card
-            fetchPreLabelData(card.uri);
           }
 
           // Check if this specific label is approved
@@ -1225,27 +1242,26 @@ const Translate = () => {
               passed.push(key);
               sessionStorage.setItem("passedCards", JSON.stringify(passed));
             }
-            
+
             // Add to history and visited cards
             addToVisited(key);
             addToHistory(card, "confirmed");
-            
+
             setEditableTerm((prev) => ({
               ...prev,
               [key]: false,
             }));
-            
+
             // Navigate to next available card
             const nextIndex = currentCardIndex + 1;
             if (nextIndex < filteredCards.length) {
               setCurrentCardIndex(nextIndex);
               const nextCard = filteredCards[nextIndex];
+              // Fetch prelabel data for the next card
+              fetchPrefLabel(nextCard.uri);
               const nextKey = `${nextCard.filename}_-_${nextCard.labelName}_-_${nextCard.lang}`;
               addToVisited(nextKey);
               addToHistory(nextCard, "viewed");
-              
-              // Fetch prelabel data for the next card
-              fetchPreLabelData(nextCard.uri);
             }
           };
 
@@ -1277,9 +1293,10 @@ const Translate = () => {
                             href={card.uri}
                             target="_blank"
                             rel="noopener noreferrer"
-                            style={{ textDecoration: 'none', color: 'inherit' }}
+                            style={{ textDecoration: "none", color: "inherit" }}
                           >
-                            {preLabels[card.uri]}
+                            <FaLink /> <b>{preLabels[card.uri]}</b>
+                            {" | "}
                           </a>
                         ) : (
                           <a
@@ -1287,9 +1304,9 @@ const Translate = () => {
                             target="_blank"
                             rel="noopener noreferrer"
                           >
-                            <FaGithub />
+                            <FaLink />
                           </a>
-                        )}{" "}
+                        )}
                         <strong>{card.lang}: </strong>
                         {card.labelName}
                       </div>
@@ -1356,9 +1373,12 @@ const Translate = () => {
                               />
                             )}
                           </Form.Group>
-                          {suggestionErrors[`${card.filename}-${card.labelName}-${card.lang}`] && (
+                          {suggestionErrors[
+                            `${card.filename}-${card.labelName}-${card.lang}`
+                          ] && (
                             <Alert variant="warning" className="mt-2">
-                              Suggestions are not working at the moment. Please fill in the translations manually.
+                              Suggestions are not working at the moment. Please
+                              fill in the translations manually.
                             </Alert>
                           )}
                         </Card.Text>
@@ -1466,7 +1486,9 @@ const Translate = () => {
                             disabled={
                               isEditing === "suggestion-in-progress" ||
                               isEditing === "suggestion-done" ||
-                              suggestionErrors[`${card.filename}-${card.labelName}-${card.lang}`]
+                              suggestionErrors[
+                                `${card.filename}-${card.labelName}-${card.lang}`
+                              ]
                             }
                             style={{
                               marginBottom: "8px",
@@ -1554,7 +1576,8 @@ const Translate = () => {
                             📋 History
                           </Button>
                           <div className="text-muted small align-self-center mx-2">
-                            Card {currentCardIndex + 1} of {filteredCards.length}
+                            Card {currentCardIndex + 1} of{" "}
+                            {filteredCards.length}
                           </div>
                         </div>
                       </Col>
@@ -1818,7 +1841,8 @@ const Translate = () => {
         <Modal.Body>
           {cardHistory.length === 0 ? (
             <Alert variant="info">
-              No history available yet. Start working on cards to build your session history.
+              No history available yet. Start working on cards to build your
+              session history.
             </Alert>
           ) : (
             <div>
@@ -1843,29 +1867,37 @@ const Translate = () => {
                               {item.labelName} ({item.lang})
                             </h6>
                             <p className="mb-1 small text-muted">
-                              <strong>File:</strong> {item.filename.split('/').pop()}
+                              <strong>File:</strong>{" "}
+                              {item.filename.split("/").pop()}
                             </p>
                             {item.original && (
                               <p className="mb-1 small text-muted">
-                                <strong>Original:</strong> {item.original.length > 50 
-                                  ? item.original.substring(0, 50) + "..." 
+                                <strong>Original:</strong>{" "}
+                                {item.original.length > 50
+                                  ? item.original.substring(0, 50) + "..."
                                   : item.original}
                               </p>
                             )}
                           </div>
                           <div className="text-end">
-                            <span 
+                            <span
                               className={`badge ${
-                                item.action === "confirmed" ? "bg-success" :
-                                item.action === "viewed_from_history" ? "bg-info" :
-                                item.action === "viewed_previous" ? "bg-warning" :
-                                "bg-secondary"
+                                item.action === "confirmed"
+                                  ? "bg-success"
+                                  : item.action === "viewed_from_history"
+                                  ? "bg-info"
+                                  : item.action === "viewed_previous"
+                                  ? "bg-warning"
+                                  : "bg-secondary"
                               }`}
                             >
-                              {item.action === "confirmed" ? "✓ Confirmed" :
-                               item.action === "viewed_from_history" ? "📋 From History" :
-                               item.action === "viewed_previous" ? "← Previous" :
-                               "👁 Viewed"}
+                              {item.action === "confirmed"
+                                ? "✓ Confirmed"
+                                : item.action === "viewed_from_history"
+                                ? "📋 From History"
+                                : item.action === "viewed_previous"
+                                ? "← Previous"
+                                : "👁 Viewed"}
                             </span>
                             <div className="small text-muted mt-1">
                               {new Date(item.timestamp).toLocaleString()}
@@ -1880,7 +1912,10 @@ const Translate = () => {
           )}
         </Modal.Body>
         <Modal.Footer>
-          <Button variant="secondary" onClick={() => setShowHistoryModal(false)}>
+          <Button
+            variant="secondary"
+            onClick={() => setShowHistoryModal(false)}
+          >
             Close
           </Button>
         </Modal.Footer>
