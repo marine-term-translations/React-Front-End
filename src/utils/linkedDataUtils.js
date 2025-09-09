@@ -137,6 +137,27 @@ export async function getSignpostedDataFromHtml(html) {
   }
 }
 
+// Function to extract skos:prelabel from the RDF store
+export function extractSkosPreLabel(store, uri) {
+  try {
+    // SKOS prelabel predicate
+    const skosPreLabel = "http://www.w3.org/2004/02/skos/core#preLabel";
+    
+    // Query the store for prelabel data
+    const quads = store.getQuads(uri, skosPreLabel, null, null);
+    
+    if (quads.length > 0) {
+      // Return the first prelabel found
+      return quads[0].object.value;
+    }
+    
+    return null;
+  } catch (error) {
+    console.error("Error extracting skos:prelabel:", error);
+    return null;
+  }
+}
+
 async function getData(uri, formats) {
   for (const format of formats) {
     try {

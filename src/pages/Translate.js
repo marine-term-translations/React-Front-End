@@ -31,6 +31,7 @@ import {
 import {
   createEmptyStore,
   getLinkedDataNQuads,
+  extractSkosPreLabel,
 } from "../utils/linkedDataUtils";
 
 const Translate = () => {
@@ -60,6 +61,7 @@ const Translate = () => {
   const [suggestionErrors, setSuggestionErrors] = useState({});
   const [cardHistory, setCardHistory] = useState([]);
   const [showHistoryModal, setShowHistoryModal] = useState(false);
+  const [preLabels, setPreLabels] = useState({}); // Store prelabel data for each URI
 
   useEffect(() => {
     const handleBeforeUnload = (event) => {
@@ -553,6 +555,27 @@ const Translate = () => {
 
   const isEmpty = (str) => {
     return !str || !/[a-zA-Z0-9]/.test(str);
+  };
+
+  // Helper function to fetch prelabel data for a card
+  const fetchPreLabelData = async (uri) => {
+    if (preLabels[uri]) {
+      return; // Already fetched
+    }
+    
+    try {
+      let store = createEmptyStore();
+      await getLinkedDataNQuads(uri, store);
+      const prelabel = extractSkosPreLabel(store, uri);
+      if (prelabel) {
+        setPreLabels(prev => ({
+          ...prev,
+          [uri]: prelabel
+        }));
+      }
+    } catch (error) {
+      console.error("Error fetching prelabel data:", error);
+    }
   };
 
   // Helper function to add card to history
@@ -1123,6 +1146,9 @@ const Translate = () => {
               addToVisited(cardKey);
               addToHistory(card, "viewed");
             }
+            
+            // Fetch prelabel data for the current card
+            fetchPreLabelData(card.uri);
           }
 
           // Check if this specific label is approved
@@ -1213,9 +1239,20 @@ const Translate = () => {
               addToHistory(nextCard, "viewed");
             }
             
-            // make empty store
-            let store = createEmptyStore();
-            await getLinkedDataNQuads(card.uri, store);
+            // Fetch linked data and extract prelabel
+            try {
+              let store = createEmptyStore();
+              await getLinkedDataNQuads(card.uri, store);
+              const prelabel = extractSkosPreLabel(store, card.uri);
+              if (prelabel) {
+                setPreLabels(prev => ({
+                  ...prev,
+                  [card.uri]: prelabel
+                }));
+              }
+            } catch (error) {
+              console.error("Error fetching prelabel data:", error);
+            }
           };
 
           return (
@@ -1241,13 +1278,24 @@ const Translate = () => {
                   >
                     <div className="d-flex justify-content-between align-items-center">
                       <div>
-                        <a
-                          href={card.uri}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                        >
-                          <FaGithub />
-                        </a>{" "}
+                        {preLabels[card.uri] ? (
+                          <a
+                            href={card.uri}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            style={{ textDecoration: 'none', color: 'inherit' }}
+                          >
+                            {preLabels[card.uri]}
+                          </a>
+                        ) : (
+                          <a
+                            href={card.uri}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            <FaGithub />
+                          </a>
+                        )}{" "}
                         <strong>{card.lang}: </strong>
                         {card.labelName}
                       </div>
