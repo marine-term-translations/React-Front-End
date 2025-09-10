@@ -37,6 +37,8 @@ export async function getLinkedDataNQuads(uri, store) {
   const to_get = filteredFormats.length > 0 ? filteredFormats : return_formats;
   console.log("To get:", to_get);
 
+  // make sure the uri send is https
+  uri = uri.replace("http://", "https://");
   const data = await getData(uri, to_get);
   let text = await data.response.text();
   console.warn(text);
