@@ -361,29 +361,39 @@ Reusable loading spinner component with customizable styling.
 
 **Location**: `src/components/Login.js`
 
-GitHub OAuth login interface with error handling and loading states.
+GitHub OAuth login interface with enhanced error handling, browser guidance, and loading states.
 
 #### State Variables
 - `gitHubLink`: Generated OAuth URL
 - `error`: Error messages
 - `loading`: Loading state during link generation
+- `showGuidanceModal`: Controls visibility of browser security guidance modal
+- `loginAttempted`: Tracks if alternative login has been attempted
 
 #### Process Flow
 1. Checks for existing authentication token
 2. Fetches OAuth configuration from backend
 3. Constructs GitHub authorization URL
 4. Provides login button with generated URL
-5. Handles errors with user-friendly messages
+5. Handles errors with user-friendly messages and guidance
 
-#### Error Handling
-- Backend API errors
-- Network connectivity issues
-- OAuth configuration problems
+#### Enhanced Error Handling
+- **Backend API errors**: Server-specific error messages
+- **Network connectivity issues**: Clear explanation of potential causes
+- **OAuth configuration problems**: Configuration guidance
+- **Browser security warnings**: Step-by-step guidance modal for different browsers
+
+#### User Guidance Features
+- **Failed Login Detection**: Explains common reasons why login might fail
+- **Alternative Login Method**: Direct redirect to `${REACT_APP_BACK_URL}/api/github/oauth/link`
+- **Browser Security Guidance Modal**: Instructions for Chrome/Edge, Firefox, and Safari
+- **OAuth Success Detection**: Shows success message and reload instruction when returning from OAuth
 
 #### Side Effects
 - Authentication check on mount
 - OAuth link generation
 - Automatic redirect for authenticated users
+- Modal state management for user guidance
 
 ---
 
