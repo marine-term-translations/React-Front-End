@@ -446,6 +446,18 @@ PORT=3001 npm start
 - Ensure CORS is configured on backend
 - Check network connectivity
 
+#### 5. Login Authentication Issues
+If you encounter login problems, the application provides enhanced guidance:
+- **Failed Login Links**: The app detects when login attempts fail and provides explanations
+- **Browser Security Warnings**: A guidance modal helps users navigate browser security prompts
+- **Alternative Login Method**: Direct access to the OAuth endpoint when normal login fails
+- **Clear Instructions**: Step-by-step guidance for Chrome/Edge, Firefox, and Safari browsers
+
+For persistent login issues:
+- Ensure `REACT_APP_BACK_URL` is correctly configured
+- Check that the backend OAuth service is accessible
+- Verify network connectivity and browser security settings
+
 #### 5. Build Failures
 ```bash
 # Clear build cache
