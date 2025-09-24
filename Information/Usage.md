@@ -2,11 +2,11 @@
 
 ## Information Page (User):
 ### Login Page:
-![Login image](Image/Login.png)
+![Login image](Image/Marine_term_translations_login.jpg)
 - Log in with your GitHub account to perform translation actions.
 
 ### Branch Page:
-![Branches image](Image/Branches.png)
+![Branches image](Image/marine-term-translations_select_batch.jpg)
 - You can select a file grouping to translate by clicking on the branch name.
 - You can view the last modification date for each branch.
 - You can see the number of empty fields per language for each branch.
@@ -23,7 +23,7 @@
   - You can go to the change verification page by clicking on `Changed`.
 
 ## Translate Page:
-![Translate image](Image/Translate.png)
+![Translate image](Image/marine_term_translations_translate.jpg)
 - You can select the translation language from the options provided by the repository.
 - You can view translations with their original label and term for the selected language.
 - You can propose a new translation or modify an existing one.
