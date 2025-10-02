@@ -62,7 +62,7 @@ const Login = () => {
   const handleModalRedirect = () => {
     setLoginAttempted(true);
     setShowGuidanceModal(false);
-    window.location.href = `${process.env.REACT_APP_BACK_URL}/api/github/oauth/link`;
+    window.open(`${process.env.REACT_APP_BACK_URL}/api/github/oauth/link`, '_blank', 'noopener,noreferrer');
   };
 
   // Handle successful OAuth completion message

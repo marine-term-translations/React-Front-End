@@ -151,4 +151,33 @@ describe('Login Component', () => {
       expect(screen.getByText('Reload Page')).toBeInTheDocument();
     });
   });
+
+  test('opens alternative login in new tab when modal redirect button is clicked', async () => {
+    const mockWindowOpen = jest.fn();
+    window.open = mockWindowOpen;
+    
+    axios.get.mockRejectedValueOnce({
+      request: {}
+    });
+
+    renderLogin();
+
+    await waitFor(() => {
+      const altLoginButton = screen.getByText('Try Alternative Login Method');
+      fireEvent.click(altLoginButton);
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText('Continue to GitHub Authentication')).toBeInTheDocument();
+    });
+
+    const continueButton = screen.getByText('Continue to GitHub Authentication');
+    fireEvent.click(continueButton);
+
+    expect(mockWindowOpen).toHaveBeenCalledWith(
+      'https://test-backend.com/api/github/oauth/link',
+      '_blank',
+      'noopener,noreferrer'
+    );
+  });
 });

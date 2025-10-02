@@ -35,6 +35,15 @@ const NavBarTranslate = () => {
                 <Nav.Item>
                   <Nav.Link href="#changed">Changed</Nav.Link>
                 </Nav.Item>
+                <Nav.Item>
+                  <Nav.Link 
+                    href="https://github.com/marine-term-translations/React-Front-End/issues/new" 
+                    target="_blank" 
+                    rel="noopener noreferrer"
+                  >
+                    Report Issue
+                  </Nav.Link>
+                </Nav.Item>
               </Nav>
             </Navbar.Collapse>
           </>
